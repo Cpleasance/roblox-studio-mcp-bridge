@@ -5,7 +5,7 @@ import os
 import shutil
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, Iterator, List, Optional, Tuple
 
 from roblox_studio_mcp.core._log import get_logger
 
@@ -80,6 +80,44 @@ class MCPConfigInjector:
         return targets
 
     @classmethod
+    def _select_targets(cls, target_name: str) -> Dict[str, List[Path]]:
+        targets = cls.get_target_paths()
+        return targets if target_name == "all" else {target_name: targets.get(target_name, [])}
+
+    @classmethod
+    def _iter_config_servers(
+        cls, target_name: str
+    ) -> Iterator[Tuple[Path, Dict, Dict]]:
+        """Yield ``(config_path, data, servers)`` for every existing, readable config.
+
+        Files that are missing, unreadable, or whose ``mcpServers`` is not a dict
+        are skipped. ``servers`` is ``data["mcpServers"]`` and can be mutated in
+        place; the caller is responsible for writing ``data`` back.
+        """
+        for path_list in cls._select_targets(target_name).values():
+            for config_path in path_list:
+                if not config_path.exists():
+                    continue
+                try:
+                    with open(config_path, encoding="utf-8") as f:
+                        data = json.load(f)
+                except (ValueError, OSError) as e:
+                    logger.warning("Skipping unreadable config %s: %s", config_path, e)
+                    continue
+                servers = data.get("mcpServers") if isinstance(data, dict) else None
+                if not isinstance(servers, dict):
+                    continue
+                yield config_path, data, servers
+
+    @staticmethod
+    def _legacy_keys(servers: Dict) -> List[str]:
+        """Return the keys of every legacy Roblox ``mcp.bat`` entry (never ours)."""
+        return [
+            k for k, v in servers.items()
+            if k != "roblox_studio" and _is_legacy_roblox_mcp_bat_entry(v)
+        ]
+
+    @classmethod
     def inject(cls, target_name: str = "all", python_path: Optional[str] = None) -> List[str]:
         py_exec = python_path or sys.executable
         repo_root = str(Path(__file__).resolve().parent.parent.parent)
@@ -91,8 +129,7 @@ class MCPConfigInjector:
             "env": {"PYTHONIOENCODING": "utf-8", "PYTHONUNBUFFERED": "1", "PYTHONPATH": repo_root},
         }
 
-        targets = cls.get_target_paths()
-        selected = targets if target_name == "all" else {target_name: targets.get(target_name, [])}
+        selected = cls._select_targets(target_name)
         modified_files = []
 
         for _client_name, path_list in selected.items():
@@ -125,9 +162,7 @@ class MCPConfigInjector:
                     data["mcpServers"] = {}
 
                 servers = data["mcpServers"]
-                for key in [
-                    k for k, v in servers.items() if k != "roblox_studio" and _is_legacy_roblox_mcp_bat_entry(v)
-                ]:
+                for key in cls._legacy_keys(servers):
                     logger.warning(
                         "Removing conflicting legacy entry %r from %s (it shells out to Roblox's "
                         "broken mcp.bat and will intermittently crash the connection)",
@@ -160,44 +195,17 @@ class MCPConfigInjector:
 
         Returns a list of config file paths that were modified.
         """
-        targets = cls.get_target_paths()
-        selected = targets if target_name == "all" else {target_name: targets.get(target_name, [])}
         modified_files = []
-
-        for _client_name, path_list in selected.items():
-            for config_path in path_list:
-                if not config_path.exists():
-                    continue
-
-                try:
-                    with open(config_path, encoding="utf-8") as f:
-                        data = json.load(f)
-                except (ValueError, OSError) as e:
-                    logger.warning("Skipping unreadable config %s: %s", config_path, e)
-                    continue
-
-                servers = data.get("mcpServers", {})
-                if not isinstance(servers, dict):
-                    continue
-
-                legacy_keys = [
-                    k for k, v in servers.items()
-                    if k != "roblox_studio" and _is_legacy_roblox_mcp_bat_entry(v)
-                ]
-                if not legacy_keys:
-                    continue
-
-                for key in legacy_keys:
-                    logger.warning(
-                        "scrub: removing legacy mcp.bat entry %r from %s",
-                        key,
-                        config_path,
-                    )
-                    del servers[key]
-
-                with open(config_path, "w", encoding="utf-8") as f:
-                    json.dump(data, f, indent=2)
-                modified_files.append(str(config_path))
+        for config_path, data, servers in cls._iter_config_servers(target_name):
+            legacy_keys = cls._legacy_keys(servers)
+            if not legacy_keys:
+                continue
+            for key in legacy_keys:
+                logger.warning("scrub: removing legacy mcp.bat entry %r from %s", key, config_path)
+                del servers[key]
+            with open(config_path, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2)
+            modified_files.append(str(config_path))
 
         return modified_files
 
@@ -208,53 +216,22 @@ class MCPConfigInjector:
         Used by ``doctor`` to warn users about active broken entries without
         modifying any files.
         """
-        targets = cls.get_target_paths()
-        selected = targets if target_name == "all" else {target_name: targets.get(target_name, [])}
         found: Dict[str, List[str]] = {}
-
-        for _client_name, path_list in selected.items():
-            for config_path in path_list:
-                if not config_path.exists():
-                    continue
-                try:
-                    with open(config_path, encoding="utf-8") as f:
-                        data = json.load(f)
-                except (ValueError, OSError):
-                    continue
-                servers = data.get("mcpServers", {})
-                if not isinstance(servers, dict):
-                    continue
-                legacy_keys = [
-                    k for k, v in servers.items()
-                    if k != "roblox_studio" and _is_legacy_roblox_mcp_bat_entry(v)
-                ]
-                if legacy_keys:
-                    found[str(config_path)] = legacy_keys
+        for config_path, _data, servers in cls._iter_config_servers(target_name):
+            legacy_keys = cls._legacy_keys(servers)
+            if legacy_keys:
+                found[str(config_path)] = legacy_keys
 
         return found
 
     @classmethod
     def eject(cls, target_name: str = "all") -> List[str]:
-        targets = cls.get_target_paths()
-        selected = targets if target_name == "all" else {target_name: targets.get(target_name, [])}
         modified_files = []
-
-        for _client_name, path_list in selected.items():
-            for config_path in path_list:
-                if not config_path.exists():
-                    continue
-
-                try:
-                    with open(config_path, encoding="utf-8") as f:
-                        data = json.load(f)
-                except (ValueError, OSError) as e:
-                    logger.warning("Skipping unreadable config %s: %s", config_path, e)
-                    continue
-
-                if "mcpServers" in data and "roblox_studio" in data["mcpServers"]:
-                    del data["mcpServers"]["roblox_studio"]
-                    with open(config_path, "w", encoding="utf-8") as f:
-                        json.dump(data, f, indent=2)
-                    modified_files.append(str(config_path))
+        for config_path, data, servers in cls._iter_config_servers(target_name):
+            if servers.pop("roblox_studio", None) is None:
+                continue
+            with open(config_path, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2)
+            modified_files.append(str(config_path))
 
         return modified_files
