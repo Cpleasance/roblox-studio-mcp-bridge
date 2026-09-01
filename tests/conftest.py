@@ -28,12 +28,18 @@ class FakeProcess:
     synthesise JSON-RPC responses without ever spawning a real subprocess.
     """
 
-    def __init__(self, responder=None):
+    def __init__(self, responder=None, on_notification=None):
         self.responder = responder
+        self.on_notification = on_notification
         self.started = False
         self.stopped = False
         self.requests = []
         self.notifications = []
+
+    def emit_notification(self, payload):
+        """Simulate StudioMCP pushing a server->client notification."""
+        if self.on_notification is not None:
+            self.on_notification(payload)
 
     # -- lifecycle -----------------------------------------------------------
     def start(self):
@@ -115,7 +121,12 @@ def drive_bridge(monkeypatch):
             "resolve_executable",
             classmethod(lambda cls: Path("fake") / "StudioMCP.exe"),
         )
-        monkeypatch.setattr(bridge_mod, "StudioMCPProcess", lambda *_a, **_k: fake_proc)
+
+        def _fake_ctor(*_a, **kw):
+            fake_proc.on_notification = kw.get("on_notification")
+            return fake_proc
+
+        monkeypatch.setattr(bridge_mod, "StudioMCPProcess", _fake_ctor)
 
         stdin_text = "".join(ln if ln.endswith("\n") else ln + "\n" for ln in lines)
         monkeypatch.setattr(sys, "stdin", io.StringIO(stdin_text))

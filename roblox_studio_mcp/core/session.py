@@ -1,4 +1,12 @@
-"""Roblox Studio session auto-binding with self-healing reconnection."""
+"""Roblox Studio session resolution with self-healing reconnection.
+
+The current ``StudioMCP`` protocol identifies the target Studio instance with a
+``studio_id`` argument passed to every tool call (discovered via the
+``list_roblox_studios`` tool). Older builds instead had a stateful
+``set_active_studio`` binding step; that tool no longer exists, so this manager
+discovers an id once, caches it, and injects it into outgoing tool-call
+arguments. On a disconnect it drops the cache and re-discovers.
+"""
 
 import json
 import threading
@@ -9,19 +17,27 @@ from roblox_studio_mcp.core._log import get_logger
 
 logger = get_logger(__name__)
 
-# Substring signatures that StudioMCP uses to report a dropped Studio connection.
-# Matching is deliberately loose (substring on the stringified content) - brittle
-# but adequate, and centralized here so it is easy to extend.
+# Substring signatures (matched against the stringified tool result) that mean
+# the bound Studio id is stale / gone and we should re-discover before retrying.
 DISCONNECT_MARKERS = (
     "Not connected",
     "No active studio",
+    "No Roblox Studio instances",
     "Connection lost",
     "Studio disconnected",
+    "studio_id is required",
+    "Studio not found",
+    "Unknown studio",
+    "Invalid studio",
 )
+
+# Tools that operate on the daemon itself, not on a specific Studio instance -
+# they must not have a studio_id injected and do not need pre-resolution.
+_SESSION_FREE_TOOLS = ("list_roblox_studios", "set_active_studio")
 
 
 class StudioSessionManager:
-    """Manages active Studio session binding and automatic reconnection recovery."""
+    """Resolves and caches the target Studio id and injects it into tool calls."""
 
     def __init__(self, process_manager, id_decoupler):
         self.proc = process_manager
@@ -30,13 +46,12 @@ class StudioSessionManager:
         self._lock = threading.Lock()
 
     def get_active_studio_id(self, force_refresh: bool = False) -> Optional[str]:
-        """Return the bound Studio id, discovering and binding one if needed.
+        """Return a usable Studio id, discovering one via ``list_roblox_studios``.
 
-        Holds ``self._lock`` across the discovery round-trips so two threads do
-        not race to bind different Studio instances. ``execute_with_session``
-        intentionally does not take this lock, so there is no lock-ordering
-        cycle and no deadlock; the worst case is a caller waiting on the
-        in-flight discovery, bounded by the ``send_request`` timeouts.
+        Holds ``self._lock`` across the discovery round-trip so two threads do not
+        race to pick different instances. ``execute_with_session`` intentionally
+        does not take this lock, so there is no lock-ordering cycle; the worst
+        case is a caller briefly waiting on an in-flight discovery.
         """
         with self._lock:
             if self.active_studio_id and not force_refresh:
@@ -68,41 +83,24 @@ class StudioSessionManager:
 
             try:
                 data = json.loads(content_text)
-                studios: List[Dict[str, Any]] = data.get("studios", [])
-                if not studios:
-                    return None
-
-                # Select active studio (prefer first available instance)
-                target_studio = studios[0]
-                studio_id = target_studio.get("id")
-
-                if studio_id:
-                    bind_id = self.id_decoupler.allocate_internal_id()
-                    bind_res = self.proc.send_request(
-                        {
-                            "jsonrpc": "2.0",
-                            "id": bind_id,
-                            "method": "tools/call",
-                            "params": {
-                                "name": "set_active_studio",
-                                "arguments": {"studio_id": studio_id},
-                            },
-                        },
-                        timeout=3.5,
-                    )
-
-                    if bind_res and not bind_res.get("result", {}).get("isError", False):
-                        self.active_studio_id = studio_id
-                        return studio_id
             except (ValueError, TypeError) as e:
                 logger.debug("Failed to parse list_roblox_studios payload: %s", e)
+                return None
 
-            return None
+            studios: List[Dict[str, Any]] = data.get("studios", []) if isinstance(data, dict) else []
+            if not studios:
+                return None
+
+            # Prefer the first instance that reports an id (usually the only one).
+            studio_id = next((s.get("id") for s in studios if isinstance(s, dict) and s.get("id")), None)
+            if studio_id:
+                self.active_studio_id = studio_id
+                logger.debug("Resolved Studio id %s (%s)", studio_id, studios[0].get("name"))
+            return studio_id
 
     def execute_with_session(self, tool_name: str, arguments: Dict[str, Any], max_retries: int = 3) -> Dict[str, Any]:
-        """Executes a tool with automatic session verification and transparent retry upon disconnect."""
-        # Session query tools do not need pre-binding
-        if tool_name in ("list_roblox_studios", "set_active_studio"):
+        """Forward a tool call, injecting the resolved ``studio_id`` and retrying on disconnect."""
+        if tool_name in _SESSION_FREE_TOOLS:
             call_id = self.id_decoupler.allocate_internal_id()
             res = self.proc.send_request(
                 {
@@ -121,11 +119,23 @@ class StudioSessionManager:
                 }
             )
 
+        # The caller (host/model) may already have supplied a studio_id; only fill
+        # it in when absent so we never override an explicit choice.
+        caller_supplied_id = bool(isinstance(arguments, dict) and arguments.get("studio_id"))
+
         for attempt in range(max_retries):
-            session_id = self.get_active_studio_id(force_refresh=(attempt > 0))
-            if not session_id and attempt < max_retries - 1:
-                time.sleep(0.3 * (attempt + 1))
-                continue
+            call_args = dict(arguments) if isinstance(arguments, dict) else {}
+
+            if not caller_supplied_id:
+                session_id = self.get_active_studio_id(force_refresh=(attempt > 0))
+                if not session_id:
+                    if attempt < max_retries - 1:
+                        time.sleep(0.3 * (attempt + 1))
+                        continue
+                    # Last attempt: fall through and let StudioMCP return its own
+                    # (informative) "no instances connected" error.
+                else:
+                    call_args["studio_id"] = session_id
 
             call_id = self.id_decoupler.allocate_internal_id()
             res = self.proc.send_request(
@@ -133,7 +143,7 @@ class StudioSessionManager:
                     "jsonrpc": "2.0",
                     "id": call_id,
                     "method": "tools/call",
-                    "params": {"name": tool_name, "arguments": arguments},
+                    "params": {"name": tool_name, "arguments": call_args},
                 },
                 timeout=15.0,
             )
@@ -145,10 +155,13 @@ class StudioSessionManager:
             result = res.get("result", {})
             content_str = str(result.get("content", ""))
 
-            # Detect disconnection signatures and retry after clearing the binding.
-            if result.get("isError") and any(marker in content_str for marker in DISCONNECT_MARKERS):
+            if (
+                not caller_supplied_id
+                and result.get("isError")
+                and any(marker in content_str for marker in DISCONNECT_MARKERS)
+            ):
                 logger.warning(
-                    "Studio disconnect detected for %r; rebinding (attempt %d)",
+                    "Studio disconnect/stale-id for %r; re-resolving (attempt %d)",
                     tool_name,
                     attempt + 1,
                 )
@@ -165,8 +178,8 @@ class StudioSessionManager:
                     "type": "text",
                     "text": (
                         "Error: Roblox Studio is not connected. Please ensure Roblox Studio "
-                        "is open with a Place loaded and Beta Features -> Model Context Protocol "
-                        "is enabled."
+                        "is open with a place loaded and the MCP server is enabled in "
+                        "Studio's Assistant settings."
                     ),
                 }
             ],

@@ -42,7 +42,7 @@ modern AI IDE at it directly runs into several bugs:
 | **stderr pipe deadlock ("Working…" freeze)** | `StudioMCP` writes enough to its `stderr` pipe to fill the OS buffer; with nobody draining it, the daemon blocks and the host hangs forever. | Dedicated daemon threads continuously drain both `stdout` and `stderr`; `stderr` lines land in a bounded in-memory ring buffer. |
 | **Roblox auto-updates wipe configs** | Studio updates roughly weekly and rewrites its own launcher/config files. | The IDE config points at `python -m roblox_studio_mcp`, which the Roblox updater never touches. |
 | **Stale `version-*` folder selection** | Naive lookups pick an old `version-<hash>` directory instead of the current build. | The resolver scans every known install root, prefers the folder that also contains the Studio Beta binary, and breaks ties by newest modification time. |
-| **Place / session disconnects** | Switching places or restarting Studio breaks the tool connection; calls then fail silently. | The session manager auto-discovers Studio instances via `list_roblox_studios`, binds one with `set_active_studio`, and transparently rebinds and retries when it detects a disconnect. |
+| **Place / session disconnects** | Switching places or restarting Studio breaks the tool connection; calls then fail silently. | The session manager auto-discovers Studio instances via `list_roblox_studios`, injects the resolved `studio_id` into every tool call, and transparently re-resolves and retries when it detects a disconnect or stale id. |
 | **Requests that hang the host** | An internal failure used to leave the host waiting on a response id it would never receive. | Every failed request now returns a JSON-RPC `-32603` error so the host fails fast instead of hanging. |
 
 ---
@@ -77,7 +77,7 @@ The package is small and each module has one job:
 | [`core/resolver.py`](roblox_studio_mcp/core/resolver.py) | Locates the `StudioMCP` executable. Honors `ROBLOX_STUDIO_MCP_PATH` / `STUDIO_MCP_PATH`, otherwise scans the Roblox install roots and returns the best candidate (Studio Beta companion present, then newest `mtime`). |
 | [`core/process.py`](roblox_studio_mcp/core/process.py) | Spawns `StudioMCP` as a child process. One daemon thread reads `stdout` and resolves per-id response futures; another drains `stderr` into a `deque` ring buffer so the OS pipe never fills. A lock serializes all writes to the child's `stdin`. |
 | [`core/protocol.py`](roblox_studio_mcp/core/protocol.py) | JSON-RPC 2.0 helpers, error-code constants, the negotiated MCP protocol version (`2024-11-05`), and `RequestIdDecoupler`, which hands out collision-free internal ids for requests the bridge originates. |
-| [`core/session.py`](roblox_studio_mcp/core/session.py) | Keeps a bound Studio instance. Discovers instances with `list_roblox_studios`, binds via `set_active_studio`, and on a detected disconnect clears the binding and retries (up to 3 attempts with backoff). |
+| [`core/session.py`](roblox_studio_mcp/core/session.py) | Resolves the target Studio instance with `list_roblox_studios`, caches its `studio_id`, and injects it into each forwarded tool call (unless the caller supplied one). On a detected disconnect or stale id it drops the cache and re-resolves, retrying up to 3 times with backoff. |
 | [`core/bridge.py`](roblox_studio_mcp/core/bridge.py) | The stdio event loop. Reads host requests line by line, answers `initialize` / `ping` / `server/discover` / `resources/list` / `prompts/list` locally, forwards `tools/list` and `tools/call`, and guarantees a response (or `-32603`) for every request that has an id. Installs guarded signal handlers (`SIGINT`, `SIGTERM`, `SIGBREAK`). |
 | [`core/_log.py`](roblox_studio_mcp/core/_log.py) | Shared logger. Everything diagnostic goes to **stderr**; `stdout` is reserved for the JSON-RPC stream. Level comes from `ROBLOX_STUDIO_MCP_LOG_LEVEL` (default `WARNING`). |
 | [`injector/config_injector.py`](roblox_studio_mcp/injector/config_injector.py) | Detects installed IDEs and injects / ejects the `roblox_studio` MCP server entry, backing up any file it touches. |
@@ -243,7 +243,7 @@ git clone https://github.com/Cpleasance/roblox-studio-mcp-bridge
 cd roblox-studio-mcp-bridge
 pip install -e ".[dev]"
 
-python -m pytest        # run the test suite (89 tests)
+python -m pytest        # run the test suite (98 tests)
 ruff check .            # lint
 ruff format .           # format
 ```
