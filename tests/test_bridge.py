@@ -235,3 +235,36 @@ class TestMultipleMessages:
             responder=default_responder,
         )
         assert [m["id"] for m in out] == [1, 2, 3]
+
+
+class TestAutoScrub:
+    """run() must call MCPConfigInjector.scrub() before bootstrapping so that
+    mcp.bat entries re-added by a Studio update are removed automatically."""
+
+    def test_scrub_called_on_run(self, drive_bridge, monkeypatch):
+        from roblox_studio_mcp.core import bridge as bridge_mod
+
+        scrub_calls = []
+        monkeypatch.setattr(
+            bridge_mod.MCPConfigInjector,
+            "scrub",
+            staticmethod(lambda: scrub_calls.append(True) or []),
+        )
+        drive_bridge([_line({"jsonrpc": "2.0", "id": 1, "method": "ping"})], responder=default_responder)
+        assert scrub_calls, "scrub() was not called during run()"
+
+    def test_scrub_failure_does_not_crash_bridge(self, drive_bridge, monkeypatch):
+        """A broken scrub must never prevent the bridge from starting."""
+        from roblox_studio_mcp.core import bridge as bridge_mod
+
+        monkeypatch.setattr(
+            bridge_mod.MCPConfigInjector,
+            "scrub",
+            staticmethod(lambda: (_ for _ in ()).throw(RuntimeError("disk full"))),
+        )
+        # Bridge should still start and answer requests normally.
+        out, _, _ = drive_bridge(
+            [_line({"jsonrpc": "2.0", "id": 99, "method": "ping"})],
+            responder=default_responder,
+        )
+        assert out == [{"jsonrpc": "2.0", "id": 99, "result": {}}]

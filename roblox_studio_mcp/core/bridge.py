@@ -25,6 +25,7 @@ from roblox_studio_mcp.core.protocol import (
 )
 from roblox_studio_mcp.core.resolver import RobloxStudioResolver
 from roblox_studio_mcp.core.session import StudioSessionManager
+from roblox_studio_mcp.injector.config_injector import MCPConfigInjector
 
 logger = get_logger(__name__)
 
@@ -168,6 +169,22 @@ class RobloxMCPBridge:
 
     def run(self) -> None:
         """Run the main stdio event loop until stdin closes or a signal arrives."""
+        # Self-healing: silently remove any legacy mcp.bat entries that Roblox
+        # Studio re-injects on every weekly auto-update.  This runs before the
+        # bridge proper starts so the bad entry can never race us on this session.
+        # Any failure here is swallowed so it can never prevent the bridge starting.
+        try:
+            cleaned = MCPConfigInjector.scrub()
+            if cleaned:
+                logger.info(
+                    "Auto-scrubbed %d config file(s) containing Roblox's broken mcp.bat "
+                    "entry (re-added by a Studio update): %s",
+                    len(cleaned),
+                    cleaned,
+                )
+        except Exception as e:  # pragma: no cover - defensive
+            logger.debug("Auto-scrub failed (non-fatal): %s", e)
+
         try:
             self.bootstrap_studiomcp()
         except FileNotFoundError as e:
