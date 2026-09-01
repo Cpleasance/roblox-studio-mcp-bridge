@@ -35,6 +35,34 @@ _No behavioural change — CLI, protocol handling, and resolver results are iden
 - `cli.py`: fixes a `ruff` line-length failure and switches subcommand routing to
   `argparse` `set_defaults(func=...)`.
 
+### Tests
+
+Suite grown from 118 to 147 tests (no production behaviour change). New coverage:
+
+- **Refactor branches** — the `_HANDLERS` `tools/call` route, the id-less
+  unknown-notification drop, `resolver._candidate_at` executable de-duplication,
+  and the shared `_iter_config_servers` skips for non-dict `mcpServers` / non-object
+  JSON roots.
+- **Non-string `method`** — a spec-violating array/object `method` is forwarded /
+  answered `METHOD_NOT_FOUND` (with an id) or dropped (without), never raised.
+- **macOS / Linux path branches** — `get_target_paths()` and the resolver's
+  platform search-root list are now exercised on any host via `sys.platform`
+  stubbing (`config_injector.py` 89% → 100%, `resolver.py` → 100%). The two native
+  `skipif` tests are kept as on-OS smoke checks.
+- **Startup failure** — `run()` turns a missing `StudioMCP` binary or a failed
+  spawn into the stderr hint + `exit(1)`, not a traceback.
+- **Handler exceptions** — a handler raising mid-request still yields `-32603` for
+  a request with an id, stays silent for a notification, and does not desync the
+  stdio stream.
+- **`_resolve()` fallback** — degrades to the input path on `OSError` /
+  `RuntimeError` and discovery survives it.
+- **`tests/test_process.py`** (new) — `send_request` early-returns `None` when the
+  child is absent or exited, and `_release_pending()` wakes a blocked caller on
+  child death (deterministic threaded test).
+
+Coverage: `bridge.py` 83% → 92%, `resolver.py` → 100%, `config_injector.py` → 100%,
+`process.py` 33% → 49%.
+
 ## [1.2.1] - 2026-09-01
 
 ### Added
