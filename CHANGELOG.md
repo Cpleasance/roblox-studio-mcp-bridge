@@ -7,7 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-_No unreleased changes yet._
+### Changed
+
+- **Consolidated installer scripts** — reduced to one double-clickable installer and
+  uninstaller per supported OS: `install.bat` / `uninstall.bat` (Windows) and
+  `install.command` / `uninstall.command` (macOS). Removed the redundant `.ps1`
+  variants (PowerShell blocks double-clicked scripts by default; `.bat` always runs)
+  and the `.sh` variants (identical to the `.command` files). Added the previously
+  missing `uninstall.command`. The manual `python -m roblox_studio_mcp inject` /
+  `eject` path is unchanged and still covers Linux and locked-down shells.
+- **README** — quick start moved to the top; `CONTRIBUTING.md` and `SECURITY.md`
+  moved into `.github/`.
 
 ## [1.2.1] - 2026-09-01
 

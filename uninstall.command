@@ -4,7 +4,7 @@ set -e
 cd "$(dirname "$0")"
 
 echo "============================================================"
-echo "  Roblox Studio MCP Universal Bridge - 1-Click Installer"
+echo "  Roblox Studio MCP Universal Bridge - 1-Click Uninstaller"
 echo "============================================================"
 echo ""
 
@@ -21,29 +21,19 @@ done
 
 if [ -z "$PYTHON_EXE" ]; then
     echo "❌ [ERROR] Python 3.8+ was not found on your system."
-    echo "Please install Python 3.8+ from https://www.python.org/ or via 'brew install python3'"
     echo ""
     read -p "Press Enter to exit..."
     exit 1
 fi
 
-echo "[1/3] Registering roblox-studio-mcp package..."
-"$PYTHON_EXE" -m pip install -e . --quiet 2>/dev/null || true
-
-echo "[2/3] Injecting MCP configuration into Claude Desktop, Cursor, OpenCode, Antigravity..."
-"$PYTHON_EXE" -m roblox_studio_mcp inject
-
-echo ""
-echo "[3/3] Running system diagnostics..."
-"$PYTHON_EXE" -m roblox_studio_mcp doctor
+echo "[1/1] Removing MCP configuration from Claude Desktop, Cursor, OpenCode, Antigravity..."
+"$PYTHON_EXE" -m roblox_studio_mcp eject
 
 echo ""
 echo "============================================================"
-echo "🎉 Setup complete! You are ready to play."
-echo ""
-echo "👉 What to do now:"
-echo "   1. Open Roblox Studio (File > Beta Features > Model Context Protocol)"
-echo "   2. Restart your AI IDE (Claude Desktop, Cursor, Antigravity, etc.)"
+echo "🗑️  Uninstallation complete!"
+echo "The roblox_studio MCP server has been removed from your IDEs."
+echo "Please restart your AI IDE for changes to take effect."
 echo "============================================================"
 echo ""
 read -p "Press Enter to finish..."
