@@ -101,28 +101,30 @@ The package is small and each module has one job:
 
 ---
 
-## Installation
+## ⚡ 1-Click Quick Start (Click and Play)
+
+1. **Enable MCP in Roblox Studio**:
+   - Open Roblox Studio → **File** → **Beta Features** → check **Model Context Protocol** → Restart Studio and open any place.
+
+2. **Run the 1-Click Installer**:
+   - **Windows**: Double-click `install.bat` (or run `powershell -ExecutionPolicy Bypass -File install.ps1`)
+   - **macOS**: Double-click `install.command` (or run `./install.sh` in Terminal)
+   - **Manual / CLI**: `python -m roblox_studio_mcp inject`
+
+3. **Restart your AI IDE** (Claude Desktop, Cursor, Antigravity, OpenCode).
+
+That's it! The installer automatically detects Python, registers the package, writes the optimal MCP configuration to all your AI IDEs, and cleans up any conflicting scripts.
+
+---
+
+## Installation Details
 
 The bridge is **run in place from the cloned repository** — there is no PyPI package and no build step.
 The injector writes an IDE config entry that points `python -m roblox_studio_mcp` at wherever you
 cloned the repo, so **the repo must stay where it is after you run `inject`**. If you move or delete
-it, re-run `inject` from the new location.
+it, re-run `install.bat` or `python -m roblox_studio_mcp inject` from the new location.
 
-### 1. Clone the repository
-
-```bash
-git clone https://github.com/Cpleasance/roblox-studio-mcp-bridge
-cd roblox-studio-mcp-bridge
-```
-
-### 2. Inject the MCP server entry
-
-```bash
-python -m roblox_studio_mcp inject
-```
-
-On Windows you can instead double-click `install.bat` (or run
-`powershell -ExecutionPolicy Bypass -File install.ps1`). Both scripts just call `inject` then `doctor`.
+### Config Entry Format
 
 `inject` writes a `roblox_studio` entry like this into each config file it finds:
 
@@ -143,36 +145,22 @@ On Windows you can instead double-click `install.bat` (or run
 }
 ```
 
-- `command` is the current Python interpreter (`sys.executable`).
-- `cwd` and `PYTHONPATH` point at the repo root, so the package imports **without `pip install`**.
+- `command` is the detected Python interpreter (`sys.executable`).
+- `cwd` and `PYTHONPATH` point at the repo root, so the package imports seamlessly.
 - Existing servers in the file are preserved. The original file is copied to `*.backup.json` before
-  every write; an unparseable file is copied to `*.corrupt.bak` and replaced.
-
-### 3. Restart your IDE
-
-Restart Claude Desktop / Cursor / etc. so it re-reads its config.
-
-### Alternative: install the package
-
-If you would rather have `roblox_studio_mcp` importable from anywhere (and get the
-`roblox-studio-mcp` console script), install it editable:
-
-```bash
-pip install -e .
-```
-
-You still run `inject` afterwards; the config entry it writes is the same.
+  every write; an unparseable file is copied to `*.corrupt.bak` and repaired.
+- Any conflicting legacy Roblox `mcp.bat` entries are automatically purged.
 
 ### Auto-inject targets
 
-`inject` / `eject` understand `--target all|claude|cursor|opencode|antigravity` (default `all`):
+`inject` / `eject` / `scrub` understand `--target all|claude|cursor|opencode|antigravity` (default `all`):
 
 | Target | Config file(s) |
 |---|---|
 | `claude` | Windows: `%APPDATA%\Claude\claude_desktop_config.json`<br>macOS: `~/Library/Application Support/Claude/claude_desktop_config.json` |
 | `cursor` | `~/.cursor/mcp.json` and `…/Cursor/User/globalStorage/roam.cursor-mcp/mcp.json` |
 | `opencode` | `~/.opencode/mcp.json` |
-| `antigravity` | `~/.antigravity/mcp_config.json` |
+| `antigravity` | `~/.gemini/antigravity/mcp_config.json` |
 
 Hosts that are not auto-injected (e.g. **Claude Code**, **Windsurf**) still work — add an
 `mcpServers.roblox_studio` entry manually using the JSON shown above.
@@ -181,21 +169,22 @@ Hosts that are not auto-injected (e.g. **Claude Code**, **Windsurf**) still work
 
 ## CLI commands
 
-Run any of these from the repo root (or anywhere, if you did `pip install -e .`):
+Run any of these from the repo root (or anywhere, if you installed via `pip install -e .`):
 
 ```bash
-# Run the stdio bridge server. This is what the IDE launches; you rarely run it by hand.
+# Run the stdio bridge server (auto-scrubs bad mcp.bat entries on every startup)
 python -m roblox_studio_mcp run
 
-# Diagnostics: list StudioMCP candidates (with the chosen one marked) and every IDE config path.
+# Diagnostics: list StudioMCP candidates and verify all IDE configurations
 python -m roblox_studio_mcp doctor
 
-# Inject the roblox_studio MCP server entry (default: every detected IDE).
-# On Windows, you can double-click install.bat (or run powershell install.ps1).
+# 1-Click Inject: inject config into all detected AI IDEs (Claude Desktop, Cursor, Antigravity, OpenCode)
 python -m roblox_studio_mcp inject --target all
 
-# Remove the roblox_studio entry again, leaving other servers untouched.
-# On Windows, you can double-click uninstall.bat (or run powershell uninstall.ps1).
+# Scrub: remove any conflicting Roblox mcp.bat entries without touching other servers
+python -m roblox_studio_mcp scrub --target all
+
+# Eject: remove the roblox_studio entry from all IDEs
 python -m roblox_studio_mcp eject --target all
 ```
 
