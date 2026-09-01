@@ -2,7 +2,6 @@
 
 import json
 import sys
-from pathlib import Path
 
 import pytest
 
@@ -155,34 +154,37 @@ class TestInject:
             MCPConfigInjector.build_bridge_entry("banana")
 
     @pytest.mark.parametrize(
-        "prefix",
+        "segments",
         [
-            r"C:\Users\me\AppData\Local\uv\cache\archive-v0\8xmpimir",
-            "/home/me/.cache/uv/archive-v0/abcd",
-            "/home/me/.local/share/uv/tools/roblox-studio-mcp-bridge",
+            ("uv", "cache", "archive-v0", "hash"),  # Windows: %LOCALAPPDATA%\uv\cache\archive-v0\…
+            ("uv", "archive-v0", "abcd"),  # Linux/macOS: ~/.cache/uv/archive-v0/…
+            ("uv", "tools", "roblox-studio-mcp-bridge"),  # `uv tool install`
         ],
     )
-    def test_uv_tool_env_detected_as_uvx(self, monkeypatch, prefix, single_target):
+    def test_uv_tool_env_detected_as_uvx(self, monkeypatch, tmp_path, segments, single_target):
+        prefix = tmp_path.joinpath(*segments)
         # A checkout beats everything, so also neutralise the repo markers.
-        monkeypatch.setattr(MCPConfigInjector, "_package_root", staticmethod(lambda: Path(prefix)))
-        monkeypatch.setattr(sys, "prefix", prefix)
+        monkeypatch.setattr(MCPConfigInjector, "_package_root", staticmethod(lambda: prefix))
+        monkeypatch.setattr(sys, "prefix", str(prefix))
         assert MCPConfigInjector.detect_mode() == "uvx"
         MCPConfigInjector.inject(mode="auto")
         entry = _read(single_target)["mcpServers"]["roblox_studio"]
         assert entry["command"] == "uvx"
         assert "cwd" not in entry
 
-    def test_plain_venv_prefix_is_pip_not_uvx(self, monkeypatch):
-        monkeypatch.setattr(MCPConfigInjector, "_package_root", staticmethod(lambda: Path("/opt/app/venv")))
-        monkeypatch.setattr(sys, "prefix", "/opt/app/venv")
+    def test_plain_venv_prefix_is_pip_not_uvx(self, monkeypatch, tmp_path):
+        venv = tmp_path / "app" / "venv"
+        monkeypatch.setattr(MCPConfigInjector, "_package_root", staticmethod(lambda: venv))
+        monkeypatch.setattr(sys, "prefix", str(venv))
         monkeypatch.delenv("UV_CACHE_DIR", raising=False)
         monkeypatch.delenv("UV_TOOL_DIR", raising=False)
         assert MCPConfigInjector.detect_mode() == "pip"
 
-    def test_uv_cache_dir_env_var_detected(self, monkeypatch):
-        monkeypatch.setenv("UV_CACHE_DIR", "/custom/uvcache")
-        monkeypatch.setattr(sys, "prefix", "/custom/uvcache/archive-v0/xyz")
-        monkeypatch.setattr(MCPConfigInjector, "_package_root", staticmethod(lambda: Path("/custom/uvcache")))
+    def test_uv_cache_dir_env_var_detected(self, monkeypatch, tmp_path):
+        cache = tmp_path / "uvcache"
+        monkeypatch.setenv("UV_CACHE_DIR", str(cache))
+        monkeypatch.setattr(sys, "prefix", str(cache / "weird-layout" / "xyz"))
+        monkeypatch.setattr(MCPConfigInjector, "_package_root", staticmethod(lambda: cache))
         assert MCPConfigInjector._running_under_uv_tool() is True
 
     def test_preserves_unrelated_servers(self, single_target):

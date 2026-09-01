@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _No unreleased changes yet._
 
+## [1.3.3] - 2026-09-01
+
+### Fixed
+
+- **`UnicodeEncodeError` in the CLI banners** — the UTF-8 stdio reconfigure lived
+  only in `__main__`, so `roblox-studio-mcp` / `roblox-studio-mcp-bridge` /
+  `uvx …` (which call the console-script entry point directly) crashed on the
+  emoji in `inject` / `doctor` / `scrub` / `eject` output whenever stdout was a
+  pipe or a legacy code page. Moved into `cli.main()` so every entry point is
+  covered.
+
 ## [1.3.2] - 2026-09-01
 
 ### Fixed
