@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _No unreleased changes yet._
 
+## [1.3.5] - 2026-09-01
+
+### Fixed
+
+- **`inject` / `doctor` "run this to fix it" hints** were hard-coded to
+  `python -m roblox_studio_mcp scrub`, which a `uvx` user cannot run. The hint is
+  now install-mode-aware (`uvx roblox-studio-mcp-bridge scrub` /
+  `roblox-studio-mcp scrub` / `python -m roblox_studio_mcp scrub`). The `inject`
+  note also now mentions the bridge auto-scrubs on startup.
+
+### Added
+
+- `tests/test_cli.py` — first direct coverage of `cli.py`: subcommand routing,
+  the UTF-8 stdio guard, and the mode-aware hint text.
+
 ## [1.3.4] - 2026-09-01
 
 ### Fixed
