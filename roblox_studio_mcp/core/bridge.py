@@ -247,78 +247,85 @@ class RobloxMCPBridge:
                     except Exception:
                         logger.error("Failed to send error response for id=%r", req_id, exc_info=True)
 
+    @staticmethod
+    def _server_info() -> Dict[str, str]:
+        return {"name": "RobloxStudio", "version": __version__}
+
     def _dispatch(self, req: Dict[str, Any], req_id: Any, method: Optional[str]) -> None:
         assert self.process is not None and self.session is not None
 
-        if method == "initialize":
-            self._write_stdout(make_jsonrpc_response(req_id, self.init_result or dict(_DEFAULT_INIT_RESULT)))
-
-        elif method == "notifications/initialized":
-            pass  # Notification, no response needed.
-
-        elif method == "server/discover":
-            list_id = self.decoupler.allocate_internal_id()
-            list_res = self.process.send_request(
-                {"jsonrpc": "2.0", "id": list_id, "method": "tools/list", "params": {}},
-                timeout=_TOOLS_LIST_TIMEOUT,
-            )
-            tools_list = list_res.get("result", {}).get("tools", []) if list_res else []
-            self._write_stdout(
-                make_jsonrpc_response(
-                    req_id,
-                    {
-                        "tools": tools_list,
-                        "serverInfo": {"name": "RobloxStudio", "version": __version__},
-                    },
-                )
-            )
-
-        elif method == "ping":
-            self._write_stdout(make_jsonrpc_response(req_id, {}))
-
-        elif method == "tools/list":
-            call_id = self.decoupler.allocate_internal_id()
-            res = self.process.send_request(
-                {
-                    "jsonrpc": "2.0",
-                    "id": call_id,
-                    "method": "tools/list",
-                    "params": req.get("params", {}),
-                },
-                timeout=_TOOLS_LIST_TIMEOUT,
-            )
-            result_payload = res.get("result", {"tools": []}) if res else {"tools": []}
-            self._write_stdout(make_jsonrpc_response(req_id, result_payload))
-
-        elif method == "tools/call":
-            params = req.get("params", {})
-            tool_name = params.get("name", "")
-            arguments = params.get("arguments", {})
-            result = self.session.execute_with_session(tool_name, arguments)
-            self._write_stdout(make_jsonrpc_response(req_id, result))
-
-        elif method in ("resources/list", "prompts/list"):
-            self._write_stdout(make_jsonrpc_response(req_id, {method.split("/")[0]: []}))
-
+        handler = self._HANDLERS.get(method)
+        if handler is not None:
+            handler(self, req, req_id, method)
         elif req_id is None:
             # Unknown notification: nothing to answer.
             logger.debug("Ignoring unknown notification: %s", method)
-
         else:
-            # Forward other methods, or return Method Not Found.
-            call_id = self.decoupler.allocate_internal_id()
-            fwd_req = dict(req)
-            fwd_req["id"] = call_id
-            res = self.process.send_request(fwd_req, timeout=10.0)
-            if res and "result" in res:
-                self._write_stdout(make_jsonrpc_response(req_id, res["result"]))
-            elif res and "error" in res:
-                self._write_stdout(
-                    make_jsonrpc_error(
-                        req_id,
-                        res["error"].get("code", INTERNAL_ERROR),
-                        res["error"].get("message", "Internal Error"),
-                    )
+            self._forward_unknown(req, req_id, method)
+
+    def _h_initialize(self, req: Dict[str, Any], req_id: Any, method: Optional[str]) -> None:
+        self._write_stdout(make_jsonrpc_response(req_id, self.init_result or dict(_DEFAULT_INIT_RESULT)))
+
+    def _h_noop(self, req: Dict[str, Any], req_id: Any, method: Optional[str]) -> None:
+        pass  # Notification, no response needed.
+
+    def _h_ping(self, req: Dict[str, Any], req_id: Any, method: Optional[str]) -> None:
+        self._write_stdout(make_jsonrpc_response(req_id, {}))
+
+    def _h_server_discover(self, req: Dict[str, Any], req_id: Any, method: Optional[str]) -> None:
+        list_id = self.decoupler.allocate_internal_id()
+        list_res = self.process.send_request(
+            {"jsonrpc": "2.0", "id": list_id, "method": "tools/list", "params": {}},
+            timeout=_TOOLS_LIST_TIMEOUT,
+        )
+        tools_list = list_res.get("result", {}).get("tools", []) if list_res else []
+        self._write_stdout(
+            make_jsonrpc_response(req_id, {"tools": tools_list, "serverInfo": self._server_info()})
+        )
+
+    def _h_tools_list(self, req: Dict[str, Any], req_id: Any, method: Optional[str]) -> None:
+        call_id = self.decoupler.allocate_internal_id()
+        res = self.process.send_request(
+            {"jsonrpc": "2.0", "id": call_id, "method": "tools/list", "params": req.get("params", {})},
+            timeout=_TOOLS_LIST_TIMEOUT,
+        )
+        result_payload = res.get("result", {"tools": []}) if res else {"tools": []}
+        self._write_stdout(make_jsonrpc_response(req_id, result_payload))
+
+    def _h_tools_call(self, req: Dict[str, Any], req_id: Any, method: Optional[str]) -> None:
+        params = req.get("params", {})
+        result = self.session.execute_with_session(params.get("name", ""), params.get("arguments", {}))
+        self._write_stdout(make_jsonrpc_response(req_id, result))
+
+    def _h_empty_list(self, req: Dict[str, Any], req_id: Any, method: Optional[str]) -> None:
+        self._write_stdout(make_jsonrpc_response(req_id, {method.split("/")[0]: []}))
+
+    def _forward_unknown(self, req: Dict[str, Any], req_id: Any, method: Optional[str]) -> None:
+        """Relay a method we don't special-case to StudioMCP, or answer Method Not Found."""
+        call_id = self.decoupler.allocate_internal_id()
+        fwd_req = dict(req)
+        fwd_req["id"] = call_id
+        res = self.process.send_request(fwd_req, timeout=10.0)
+        if res and "result" in res:
+            self._write_stdout(make_jsonrpc_response(req_id, res["result"]))
+        elif res and "error" in res:
+            self._write_stdout(
+                make_jsonrpc_error(
+                    req_id,
+                    res["error"].get("code", INTERNAL_ERROR),
+                    res["error"].get("message", "Internal Error"),
                 )
-            else:
-                self._write_stdout(make_jsonrpc_error(req_id, METHOD_NOT_FOUND, f"Method '{method}' not found"))
+            )
+        else:
+            self._write_stdout(make_jsonrpc_error(req_id, METHOD_NOT_FOUND, f"Method '{method}' not found"))
+
+    _HANDLERS = {
+        "initialize": _h_initialize,
+        "notifications/initialized": _h_noop,
+        "server/discover": _h_server_discover,
+        "ping": _h_ping,
+        "tools/list": _h_tools_list,
+        "tools/call": _h_tools_call,
+        "resources/list": _h_empty_list,
+        "prompts/list": _h_empty_list,
+    }

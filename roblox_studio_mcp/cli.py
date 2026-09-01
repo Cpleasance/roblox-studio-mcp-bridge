@@ -8,6 +8,12 @@ from roblox_studio_mcp.core.bridge import RobloxMCPBridge
 from roblox_studio_mcp.core.resolver import RobloxStudioResolver
 from roblox_studio_mcp.injector.config_injector import MCPConfigInjector
 
+_IDE_TARGETS = ["all", "claude", "cursor", "opencode", "antigravity"]
+
+
+def _add_target_arg(subparser):
+    subparser.add_argument("--target", choices=_IDE_TARGETS, default="all", help="Target IDE")
+
 
 def cmd_run(args):
     bridge = RobloxMCPBridge()
@@ -105,57 +111,34 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("-v", "--version", action="version", version=f"%(prog)s {__version__}")
+    parser.set_defaults(func=cmd_run)
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
-    # run
-    subparsers.add_parser("run", help="Run the MCP stdio bridge server (default)")
+    subparsers.add_parser("run", help="Run the MCP stdio bridge server (default)").set_defaults(func=cmd_run)
 
-    # doctor
-    subparsers.add_parser("doctor", help="Run system diagnostics and verify Roblox Studio MCP status")
+    subparsers.add_parser(
+        "doctor", help="Run system diagnostics and verify Roblox Studio MCP status"
+    ).set_defaults(func=cmd_doctor)
 
-    # inject
-    inject_parser = subparsers.add_parser("inject", help="Auto-inject config into Claude Desktop, Cursor, OpenCode, Antigravity")
-    inject_parser.add_argument(
-        "--target",
-        choices=["all", "claude", "cursor", "opencode", "antigravity"],
-        default="all",
-        help="Target IDE",
+    inject_parser = subparsers.add_parser(
+        "inject", help="Auto-inject config into Claude Desktop, Cursor, OpenCode, Antigravity"
     )
+    _add_target_arg(inject_parser)
+    inject_parser.set_defaults(func=cmd_inject)
 
-    # scrub
     scrub_parser = subparsers.add_parser(
         "scrub",
         help="Remove Roblox's broken mcp.bat entries from IDE configs (safe to re-run after Studio updates)",
     )
-    scrub_parser.add_argument(
-        "--target",
-        choices=["all", "claude", "cursor", "opencode", "antigravity"],
-        default="all",
-        help="Target IDE",
-    )
+    _add_target_arg(scrub_parser)
+    scrub_parser.set_defaults(func=cmd_scrub)
 
-    # eject
     eject_parser = subparsers.add_parser("eject", help="Remove config from IDEs")
-    eject_parser.add_argument(
-        "--target",
-        choices=["all", "claude", "cursor", "opencode", "antigravity"],
-        default="all",
-        help="Target IDE",
-    )
+    _add_target_arg(eject_parser)
+    eject_parser.set_defaults(func=cmd_eject)
 
     args = parser.parse_args()
-
-    if args.command == "doctor":
-        cmd_doctor(args)
-    elif args.command == "inject":
-        cmd_inject(args)
-    elif args.command == "scrub":
-        cmd_scrub(args)
-    elif args.command == "eject":
-        cmd_eject(args)
-    else:
-        # Default to run
-        cmd_run(args)
+    args.func(args)
 
 
 if __name__ == "__main__":

@@ -4,7 +4,7 @@ import os
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 
 @dataclass
@@ -17,6 +17,33 @@ class StudioCandidate:
 
 class RobloxStudioResolver:
     """Discovers all StudioMCP binaries across user, system, and custom paths."""
+
+    @staticmethod
+    def _resolve(path: Path) -> Path:
+        """Best-effort ``Path.resolve`` that never raises."""
+        try:
+            return path.resolve()
+        except (OSError, RuntimeError):
+            return path
+
+    @classmethod
+    def _candidate_at(
+        cls, exe_dir: Path, exe_name: str, companion_name: str, seen_exes: set
+    ) -> Optional[StudioCandidate]:
+        """Return a candidate for ``exe_dir/exe_name`` if it exists and is new."""
+        exe = exe_dir / exe_name
+        if not exe.is_file():
+            return None
+        resolved = cls._resolve(exe)
+        if resolved in seen_exes:
+            return None
+        seen_exes.add(resolved)
+        return StudioCandidate(
+            executable_path=exe,
+            version_dir=exe_dir,
+            last_modified=exe.stat().st_mtime,
+            has_studio_beta=(exe_dir / companion_name).is_file(),
+        )
 
     @classmethod
     def get_all_candidates(cls) -> List[StudioCandidate]:
@@ -96,56 +123,23 @@ class RobloxStudioResolver:
         deduped_roots: List[Path] = []
         seen_roots = set()
         for root in search_roots:
-            try:
-                resolved_root = root.resolve()
-            except (OSError, RuntimeError):
-                resolved_root = root
+            resolved_root = cls._resolve(root)
             if resolved_root not in seen_roots:
                 seen_roots.add(resolved_root)
                 deduped_roots.append(root)
 
-        seen_exes = set()
+        seen_exes: set = set()
         for root_path in deduped_roots:
             if not root_path.exists():
                 continue
 
-            # Check root directory
-            direct_exe = root_path / exe_name
-            if direct_exe.is_file():
-                try:
-                    res_exe = direct_exe.resolve()
-                except (OSError, RuntimeError):
-                    res_exe = direct_exe
-                if res_exe not in seen_exes:
-                    seen_exes.add(res_exe)
-                    candidates.append(
-                        StudioCandidate(
-                            executable_path=direct_exe,
-                            version_dir=root_path,
-                            last_modified=direct_exe.stat().st_mtime,
-                            has_studio_beta=(root_path / companion_name).is_file(),
-                        )
-                    )
-
-            # Check version subdirectories (e.g. version-xxxxxxxxxxxx)
-            for version_folder in root_path.glob("version-*"):
-                if version_folder.is_dir():
-                    sub_exe = version_folder / exe_name
-                    if sub_exe.is_file():
-                        try:
-                            res_exe = sub_exe.resolve()
-                        except (OSError, RuntimeError):
-                            res_exe = sub_exe
-                        if res_exe not in seen_exes:
-                            seen_exes.add(res_exe)
-                            candidates.append(
-                                StudioCandidate(
-                                    executable_path=sub_exe,
-                                    version_dir=version_folder,
-                                    last_modified=sub_exe.stat().st_mtime,
-                                    has_studio_beta=(version_folder / companion_name).is_file(),
-                                )
-                            )
+            # Check the root directory itself, then each version-* subdirectory.
+            search_dirs = [root_path]
+            search_dirs.extend(d for d in root_path.glob("version-*") if d.is_dir())
+            for exe_dir in search_dirs:
+                cand = cls._candidate_at(exe_dir, exe_name, companion_name, seen_exes)
+                if cand is not None:
+                    candidates.append(cand)
 
         # Sort primarily by presence of companion Studio binary, secondarily by LastWriteTime (newest first)
         candidates.sort(key=lambda c: (c.has_studio_beta, c.last_modified), reverse=True)
