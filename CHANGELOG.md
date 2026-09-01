@@ -78,6 +78,10 @@ Studio's native `StudioMCP` daemon. Supports Windows and macOS on Python 3.8+.
   message stream. Verbosity is controlled by `ROBLOX_STUDIO_MCP_LOG_LEVEL`
   (default `WARNING`).
 - Removed the unused `discovery.py` module.
+- `inject`/`eject --target antigravity` now write both plausible config
+  locations (the Windsurf-lineage `~/.antigravity/mcp_config.json` and the
+  Code-OSS-style per-user `.../Antigravity/User/mcp.json`), since Antigravity's
+  real config path isn't publicly documented and reports vary by build.
 
 [Unreleased]: https://github.com/Cpleasance/roblox-studio-mcp-bridge/compare/v1.2.0...HEAD
 [1.2.0]: https://github.com/Cpleasance/roblox-studio-mcp-bridge/releases/tag/v1.2.0
