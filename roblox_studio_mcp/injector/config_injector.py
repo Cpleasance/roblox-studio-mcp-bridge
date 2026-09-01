@@ -130,20 +130,24 @@ class MCPConfigInjector:
     def _running_under_uv_tool() -> bool:
         """True when the interpreter belongs to a ``uvx`` / ``uv tool`` environment.
 
-        Those interpreters live under ``<uv-cache>/…`` or ``<uv-tools>/…`` and are
-        not stable — a config must invoke ``uvx`` rather than hard-code the path.
+        Such interpreters are not stable (they sit in uv's content-addressed cache
+        or a temp dir), so the config must invoke ``uvx`` rather than hard-code the
+        path.
         """
+        # Primary signal: uv exports its own path as $UV into every process it
+        # spawns (uvx / uv run / uv tool run).
+        if os.environ.get("UV"):
+            return True
+
         prefix = Path(sys.prefix).resolve()
         parts = prefix.parts
-        # Layouts seen in the wild: <localappdata>\uv\cache\archive-v0\<hash>
-        # (Windows), ~/.cache/uv/archive-v0/<hash> (Linux), ~/Library/Caches/uv/…
-        # (macOS), and ~/.local/share/uv/tools/<name> for `uv tool install`.
-        for i in range(len(parts) - 1):
-            nxt = parts[i + 1]
-            if parts[i] == "uv" and (
-                nxt in ("cache", "tools")
-                or nxt.startswith(("archive-v", "builds-v", "environments-v"))
-            ):
+        # Fallback: uv's ephemeral envs carry a content-addressed bucket segment
+        # (archive-v0, builds-v0, environments-v0, …) and/or live under a "uv" dir
+        # (…\uv\cache\… on Windows, ~/.cache/uv/… on Linux, ~/.local/share/uv/tools/…).
+        for i, seg in enumerate(parts):
+            if seg.startswith(("archive-v", "builds-v", "environments-v", "sources-v")):
+                return True
+            if seg == "uv" and i + 1 < len(parts) and parts[i + 1] in ("cache", "tools"):
                 return True
         for env_var in ("UV_CACHE_DIR", "UV_TOOL_DIR"):
             base = os.environ.get(env_var)

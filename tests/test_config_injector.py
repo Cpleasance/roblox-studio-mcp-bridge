@@ -163,25 +163,37 @@ class TestInject:
     )
     def test_uv_tool_env_detected_as_uvx(self, monkeypatch, tmp_path, segments, single_target):
         prefix = tmp_path.joinpath(*segments)
-        # A checkout beats everything, so also neutralise the repo markers.
+        # A checkout beats everything, so also neutralise the repo markers, and
+        # drop $UV so this exercises the path fallback, not the env-var signal.
         monkeypatch.setattr(MCPConfigInjector, "_package_root", staticmethod(lambda: prefix))
         monkeypatch.setattr(sys, "prefix", str(prefix))
+        monkeypatch.delenv("UV", raising=False)
         assert MCPConfigInjector.detect_mode() == "uvx"
         MCPConfigInjector.inject(mode="auto")
         entry = _read(single_target)["mcpServers"]["roblox_studio"]
         assert entry["command"] == "uvx"
         assert "cwd" not in entry
 
+    def test_uv_env_var_alone_is_enough(self, monkeypatch, tmp_path):
+        # `uvx`/`uv run` export $UV even when the interpreter sits in a temp dir
+        # with no recognisable "uv" path segment (e.g. under UV_NO_CACHE).
+        odd = tmp_path / "Temp" / ".tmpXYZ" / "env"
+        monkeypatch.setattr(MCPConfigInjector, "_package_root", staticmethod(lambda: odd))
+        monkeypatch.setattr(sys, "prefix", str(odd))
+        monkeypatch.setenv("UV", "/somewhere/uv")
+        assert MCPConfigInjector.detect_mode() == "uvx"
+
     def test_plain_venv_prefix_is_pip_not_uvx(self, monkeypatch, tmp_path):
         venv = tmp_path / "app" / "venv"
         monkeypatch.setattr(MCPConfigInjector, "_package_root", staticmethod(lambda: venv))
         monkeypatch.setattr(sys, "prefix", str(venv))
-        monkeypatch.delenv("UV_CACHE_DIR", raising=False)
-        monkeypatch.delenv("UV_TOOL_DIR", raising=False)
+        for var in ("UV", "UV_CACHE_DIR", "UV_TOOL_DIR"):
+            monkeypatch.delenv(var, raising=False)
         assert MCPConfigInjector.detect_mode() == "pip"
 
     def test_uv_cache_dir_env_var_detected(self, monkeypatch, tmp_path):
         cache = tmp_path / "uvcache"
+        monkeypatch.delenv("UV", raising=False)
         monkeypatch.setenv("UV_CACHE_DIR", str(cache))
         monkeypatch.setattr(sys, "prefix", str(cache / "weird-layout" / "xyz"))
         monkeypatch.setattr(MCPConfigInjector, "_package_root", staticmethod(lambda: cache))
