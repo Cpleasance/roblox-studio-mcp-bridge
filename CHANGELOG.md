@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **PyPI distribution** — the bridge is now installable as `pip install roblox-studio-mcp`
+  or `uvx roblox-studio-mcp`, in addition to the source-checkout flow.
+- **`inject --mode auto|repo|pip|uvx`** — `inject` detects whether it is running
+  from a source checkout or an installed package and writes the matching
+  `mcpServers.roblox_studio` entry: `repo` keeps the `cwd` + `PYTHONPATH` binding
+  to the clone, `pip` / `uvx` drop it entirely (no move sensitivity). Override with
+  `--mode`. Exposed as `MCPConfigInjector.detect_mode()` /
+  `MCPConfigInjector.build_bridge_entry()`.
+
 ### Changed
 
 - **Consolidated installer scripts** — reduced to one double-clickable installer and
@@ -37,7 +48,7 @@ _No behavioural change — CLI, protocol handling, and resolver results are iden
 
 ### Tests
 
-Suite grown from 118 to 147 tests (no production behaviour change). New coverage:
+Suite grown from 118 to 152 tests. New coverage:
 
 - **Refactor branches** — the `_HANDLERS` `tools/call` route, the id-less
   unknown-notification drop, `resolver._candidate_at` executable de-duplication,
@@ -45,6 +56,8 @@ Suite grown from 118 to 147 tests (no production behaviour change). New coverage
   JSON roots.
 - **Non-string `method`** — a spec-violating array/object `method` is forwarded /
   answered `METHOD_NOT_FOUND` (with an id) or dropped (without), never raised.
+- **`inject --mode`** — `repo` / `pip` / `uvx` entry shapes, `auto` detection, and
+  rejection of an unknown mode.
 - **macOS / Linux path branches** — `get_target_paths()` and the resolver's
   platform search-root list are now exercised on any host via `sys.platform`
   stubbing (`config_injector.py` 89% → 100%, `resolver.py` → 100%). The two native
