@@ -45,7 +45,11 @@ class TestGetTargetPaths:
         assert claude.name == "claude_desktop_config.json"
         assert "Claude" in claude.parts
         assert any(p.name == "mcp.json" for p in targets["cursor"])
+        # Antigravity's real config location isn't documented, so we target both
+        # plausible candidates: the Windsurf-lineage dotfile and the Code-OSS
+        # per-user profile file.
         assert targets["antigravity"][0].name == "mcp_config.json"
+        assert any(p.name == "mcp.json" and "Antigravity" in p.parts for p in targets["antigravity"])
 
     @pytest.mark.skipif(sys.platform != "darwin", reason="macOS path layout")
     def test_macos_paths(self):  # pragma: no cover - platform specific

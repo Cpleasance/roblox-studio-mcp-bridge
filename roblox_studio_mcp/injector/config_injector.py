@@ -25,6 +25,12 @@ class MCPConfigInjector:
             "antigravity": [],
         }
 
+        # Antigravity's config location isn't documented, and the two forks it
+        # descends from disagree: Windsurf-lineage tools read a dotfile in the
+        # home directory, while plain VS Code / Code-OSS forks read a per-user
+        # profile file under the app's own data directory. We write to both
+        # candidates so `inject` works regardless of which one Antigravity
+        # actually reads; `doctor` lists both paths with their existence status.
         if sys.platform == "win32":
             appdata = Path(os.environ.get("APPDATA", home / "AppData" / "Roaming"))
             targets["claude"].append(appdata / "Claude" / "claude_desktop_config.json")
@@ -32,6 +38,7 @@ class MCPConfigInjector:
             targets["cursor"].append(appdata / "Cursor" / "User" / "globalStorage" / "roam.cursor-mcp" / "mcp.json")
             targets["opencode"].append(home / ".opencode" / "mcp.json")
             targets["antigravity"].append(home / ".antigravity" / "mcp_config.json")
+            targets["antigravity"].append(appdata / "Antigravity" / "User" / "mcp.json")
         elif sys.platform == "darwin":
             app_support = home / "Library" / "Application Support"
             targets["claude"].append(app_support / "Claude" / "claude_desktop_config.json")
@@ -39,10 +46,12 @@ class MCPConfigInjector:
             targets["cursor"].append(app_support / "Cursor" / "User" / "globalStorage" / "roam.cursor-mcp" / "mcp.json")
             targets["opencode"].append(home / ".opencode" / "mcp.json")
             targets["antigravity"].append(home / ".antigravity" / "mcp_config.json")
+            targets["antigravity"].append(app_support / "Antigravity" / "User" / "mcp.json")
         else:
             targets["cursor"].append(home / ".cursor" / "mcp.json")
             targets["opencode"].append(home / ".opencode" / "mcp.json")
             targets["antigravity"].append(home / ".antigravity" / "mcp_config.json")
+            targets["antigravity"].append(home / ".config" / "Antigravity" / "User" / "mcp.json")
 
         return targets
 
