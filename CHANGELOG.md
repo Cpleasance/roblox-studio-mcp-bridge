@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+_No unreleased changes yet._
+
+## [1.3.0] - 2026-09-01
+
 ### Added
 
 - **PyPI distribution** — the bridge is now installable as `pip install roblox-studio-mcp`
