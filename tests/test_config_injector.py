@@ -66,6 +66,43 @@ class TestGetTargetPaths:
         assert targets["claude"] == []
         assert targets["cursor"]
 
+    # The two tests above only run on their native OS. The three below exercise the
+    # same darwin/linux arms on any host by stubbing sys.platform (get_target_paths
+    # only branches on that string and builds Path objects - it touches no files).
+    def test_macos_paths_via_platform_stub(self, monkeypatch):
+        monkeypatch.setattr(sys, "platform", "darwin")
+        targets = MCPConfigInjector.get_target_paths()
+        assert set(targets) == EXPECTED_KEYS
+        claude = targets["claude"][0]
+        assert claude.name == "claude_desktop_config.json"
+        assert "Application Support" in claude.parts and "Claude" in claude.parts
+        assert any(p.name == "mcp.json" and "Application Support" in p.parts for p in targets["cursor"])
+        primary_ag = targets["antigravity"][0]
+        assert primary_ag.name == "mcp_config.json"
+        assert ".gemini" in primary_ag.parts and "antigravity" in primary_ag.parts
+        assert any(p.name == "mcp_config.json" and ".antigravity" in p.parts for p in targets["antigravity"])
+        assert any(p.name == "mcp.json" and "Application Support" in p.parts and "Antigravity" in p.parts
+                   for p in targets["antigravity"])
+
+    def test_linux_paths_via_platform_stub(self, monkeypatch):
+        monkeypatch.setattr(sys, "platform", "linux")
+        targets = MCPConfigInjector.get_target_paths()
+        assert set(targets) == EXPECTED_KEYS
+        assert targets["claude"] == []
+        assert any(p.name == "mcp.json" and ".cursor" in p.parts for p in targets["cursor"])
+        assert any(p.name == "mcp.json" and ".opencode" in p.parts for p in targets["opencode"])
+        ag = targets["antigravity"]
+        assert ag[0].name == "mcp_config.json" and ".gemini" in ag[0].parts and "antigravity" in ag[0].parts
+        assert any(p.name == "mcp_config.json" and ".antigravity" in p.parts for p in ag)
+        assert any(p.name == "mcp.json" and ".config" in p.parts and "Antigravity" in p.parts for p in ag)
+
+    def test_bsd_falls_through_to_linux_layout(self, monkeypatch):
+        # Any non-win32/darwin platform string must hit the same else-arm as Linux.
+        monkeypatch.setattr(sys, "platform", "freebsd13")
+        targets = MCPConfigInjector.get_target_paths()
+        assert targets["claude"] == []
+        assert targets["cursor"] and targets["opencode"] and targets["antigravity"]
+
 
 class TestInject:
     def test_creates_file_with_roblox_studio_server(self, single_target):
