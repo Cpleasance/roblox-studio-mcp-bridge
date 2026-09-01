@@ -23,3 +23,15 @@ ENV/
 *.bak
 *.tmp
 *.backup.json
+
+# Test / lint / coverage caches
+.pytest_cache/
+.ruff_cache/
+.tox/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# Bridge runtime artifacts
+*.corrupt.bak

@@ -3,6 +3,10 @@
     Roblox Studio MCP Universal Bridge - One-Click PowerShell Installer
 #>
 
+# Run from the repository root so "python -m roblox_studio_mcp" resolves
+# without requiring an install.
+Set-Location $PSScriptRoot
+
 Write-Host "============================================================" -ForegroundColor Cyan
 Write-Host "  Roblox Studio MCP Universal Bridge - One-Click Installer" -ForegroundColor Cyan
 Write-Host "============================================================`n" -ForegroundColor Cyan
