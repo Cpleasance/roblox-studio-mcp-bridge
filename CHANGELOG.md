@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _No unreleased changes yet._
 
+## [1.3.4] - 2026-09-01
+
+### Fixed
+
+- **`uvx … inject` still wrote a `pip` entry in some cases** — the uv-environment
+  check only matched specific cache path shapes and missed uv's temp-dir layout
+  (e.g. under `UV_NO_CACHE`). It now keys off the `UV` environment variable that
+  `uvx` / `uv run` export into every spawned process, with the path heuristic
+  (any `archive-v*` / `builds-v*` / `environments-v*` segment, or a `uv/cache`
+  · `uv/tools` dir) as a fallback. Verified end-to-end: `uvx roblox-studio-mcp-bridge
+  inject` now writes `{"command": "uvx", "args": ["roblox-studio-mcp-bridge", "run"]}`.
+
 ## [1.3.3] - 2026-09-01
 
 ### Fixed
