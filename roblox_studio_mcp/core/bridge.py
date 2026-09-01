@@ -34,6 +34,22 @@ _DEFAULT_INIT_RESULT = {
     "serverInfo": {"name": "RobloxStudio", "version": "1.2.0"},
 }
 
+# Server->client notifications that are safe and useful to relay from StudioMCP
+# straight through to the host (they carry no id and no sensitive payload).
+_FORWARDED_NOTIFICATIONS = frozenset(
+    {
+        "notifications/tools/list_changed",
+        "notifications/resources/list_changed",
+        "notifications/prompts/list_changed",
+        "notifications/resources/updated",
+    }
+)
+
+# StudioMCP holds tools/list open until a Studio instance registers its tools (or
+# an internal timeout, ~8-10s, elapses). Wait longer than that so we capture the
+# daemon's real answer instead of racing it.
+_TOOLS_LIST_TIMEOUT = 12.0
+
 
 class RobloxMCPBridge:
     """Universal MCP bridge that multiplexes host client requests to StudioMCP."""
