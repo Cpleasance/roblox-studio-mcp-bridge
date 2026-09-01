@@ -13,7 +13,7 @@ version-selection, and session-rebinding bugs that make the stock setup unreliab
 
 *Unofficial community tool — not affiliated with or endorsed by Roblox Corporation. It only launches
 Roblox's own local `StudioMCP` executable and edits local IDE config files; it opens no network
-listeners. Current release: **v1.3.1** ([CHANGELOG.md](CHANGELOG.md)).*
+listeners. Current release: **v1.3.2** ([CHANGELOG.md](CHANGELOG.md)).*
 
 ---
 
