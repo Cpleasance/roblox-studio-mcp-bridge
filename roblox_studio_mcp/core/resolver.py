@@ -33,7 +33,7 @@ class RobloxStudioResolver:
         env_override = os.getenv("ROBLOX_STUDIO_MCP_PATH") or os.getenv("STUDIO_MCP_PATH")
         if env_override:
             p = Path(env_override)
-            if p.is_file() and os.access(p, os.X_OK):
+            if p.is_file():
                 return [
                     StudioCandidate(
                         executable_path=p,
@@ -92,35 +92,60 @@ class RobloxStudioResolver:
                 ]
             )
 
-        for root_path in search_roots:
+        # Deduplicate search roots while preserving priority order
+        deduped_roots: List[Path] = []
+        seen_roots = set()
+        for root in search_roots:
+            try:
+                resolved_root = root.resolve()
+            except (OSError, RuntimeError):
+                resolved_root = root
+            if resolved_root not in seen_roots:
+                seen_roots.add(resolved_root)
+                deduped_roots.append(root)
+
+        seen_exes = set()
+        for root_path in deduped_roots:
             if not root_path.exists():
                 continue
 
             # Check root directory
             direct_exe = root_path / exe_name
             if direct_exe.is_file():
-                candidates.append(
-                    StudioCandidate(
-                        executable_path=direct_exe,
-                        version_dir=root_path,
-                        last_modified=direct_exe.stat().st_mtime,
-                        has_studio_beta=(root_path / companion_name).is_file(),
+                try:
+                    res_exe = direct_exe.resolve()
+                except (OSError, RuntimeError):
+                    res_exe = direct_exe
+                if res_exe not in seen_exes:
+                    seen_exes.add(res_exe)
+                    candidates.append(
+                        StudioCandidate(
+                            executable_path=direct_exe,
+                            version_dir=root_path,
+                            last_modified=direct_exe.stat().st_mtime,
+                            has_studio_beta=(root_path / companion_name).is_file(),
+                        )
                     )
-                )
 
             # Check version subdirectories (e.g. version-xxxxxxxxxxxx)
             for version_folder in root_path.glob("version-*"):
                 if version_folder.is_dir():
                     sub_exe = version_folder / exe_name
                     if sub_exe.is_file():
-                        candidates.append(
-                            StudioCandidate(
-                                executable_path=sub_exe,
-                                version_dir=version_folder,
-                                last_modified=sub_exe.stat().st_mtime,
-                                has_studio_beta=(version_folder / companion_name).is_file(),
+                        try:
+                            res_exe = sub_exe.resolve()
+                        except (OSError, RuntimeError):
+                            res_exe = sub_exe
+                        if res_exe not in seen_exes:
+                            seen_exes.add(res_exe)
+                            candidates.append(
+                                StudioCandidate(
+                                    executable_path=sub_exe,
+                                    version_dir=version_folder,
+                                    last_modified=sub_exe.stat().st_mtime,
+                                    has_studio_beta=(version_folder / companion_name).is_file(),
+                                )
                             )
-                        )
 
         # Sort primarily by presence of companion Studio binary, secondarily by LastWriteTime (newest first)
         candidates.sort(key=lambda c: (c.has_studio_beta, c.last_modified), reverse=True)
