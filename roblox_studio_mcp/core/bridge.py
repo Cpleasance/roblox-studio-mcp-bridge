@@ -254,7 +254,7 @@ class RobloxMCPBridge:
     def _dispatch(self, req: Dict[str, Any], req_id: Any, method: Optional[str]) -> None:
         assert self.process is not None and self.session is not None
 
-        handler = self._HANDLERS.get(method)
+        handler = self._HANDLERS.get(method) if isinstance(method, str) else None
         if handler is not None:
             handler(self, req, req_id, method)
         elif req_id is None:
