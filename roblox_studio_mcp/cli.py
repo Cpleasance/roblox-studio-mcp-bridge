@@ -16,6 +16,15 @@ def _add_target_arg(subparser):
     subparser.add_argument("--target", choices=_IDE_TARGETS, default="all", help="Target IDE")
 
 
+def _self_command(mode: str) -> str:
+    """How to re-invoke this CLI, matching how it was installed."""
+    if mode == "uvx":
+        return "uvx roblox-studio-mcp-bridge"
+    if mode == "repo":
+        return "python -m roblox_studio_mcp"
+    return "roblox-studio-mcp"
+
+
 def cmd_run(args):
     bridge = RobloxMCPBridge()
     bridge.run()
@@ -59,7 +68,7 @@ def cmd_doctor(args):
         for cfg_path, keys in legacy.items():
             print(f"   {cfg_path}: {', '.join(repr(k) for k in keys)}")
         print("\n   Run the following to remove them:")
-        print("     python -m roblox_studio_mcp scrub")
+        print(f"     {_self_command(MCPConfigInjector.detect_mode())} scrub")
     else:
         print("✅ No conflicting Roblox mcp.bat entries found.")
 
@@ -78,8 +87,8 @@ def cmd_inject(args):
         print("👉 Please restart Claude Desktop / Cursor / Antigravity for changes to take effect.")
         print()
         print("⚠️  Note: Roblox Studio re-adds its own broken mcp.bat entry on every weekly")
-        print("   auto-update. If the connection starts crashing after a Studio update, run:")
-        print("     python -m roblox_studio_mcp scrub")
+        print("   auto-update. The bridge auto-removes it on startup; if problems persist, run:")
+        print(f"     {_self_command(mode)} scrub")
     else:
         print("⚠️ No config files updated.")
 
