@@ -16,8 +16,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and the `.sh` variants (identical to the `.command` files). Added the previously
   missing `uninstall.command`. The manual `python -m roblox_studio_mcp inject` /
   `eject` path is unchanged and still covers Linux and locked-down shells.
-- **README** — quick start moved to the top; `CONTRIBUTING.md` and `SECURITY.md`
-  moved into `.github/`.
+- **README** — quick start moved to the top of the file; the rest of the content is
+  unchanged, only reordered below it.
+- **Repository layout** — `CONTRIBUTING.md` and `SECURITY.md` moved into `.github/`
+  (GitHub still surfaces both in the same places).
+
+### Internal
+
+_No behavioural change — CLI, protocol handling, and resolver results are identical._
+
+- `core/bridge.py`: the `_dispatch` if/elif ladder is now a method-name → handler
+  table (`_HANDLERS`), with `_forward_unknown` / `_server_info` extracted.
+- `core/resolver.py`: the duplicated root-dir / `version-*` scan blocks are folded
+  into `_candidate_at()`, plus a `_resolve()` helper for best-effort `Path.resolve`.
+- `injector/config_injector.py`: `scrub` / `find_legacy_entries` / `eject` share a
+  single `_iter_config_servers()` walk and a `_legacy_keys()` matcher.
+- `cli.py`: fixes a `ruff` line-length failure and switches subcommand routing to
+  `argparse` `set_defaults(func=...)`.
 
 ## [1.2.1] - 2026-09-01
 
