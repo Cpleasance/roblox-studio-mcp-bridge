@@ -76,6 +76,16 @@ class TestNotificationsAndPing:
         )
         assert out == [{"jsonrpc": "2.0", "id": 1, "result": {}}]
 
+    def test_unknown_notification_is_dropped_not_forwarded(self, drive_bridge):
+        # An id-less request for a method not in the dispatch table must be
+        # silently dropped - never answered and never relayed to StudioMCP.
+        out, proc, _ = drive_bridge(
+            [_line({"jsonrpc": "2.0", "method": "notifications/cancelled", "params": {"requestId": 7}})],
+            responder=default_responder,
+        )
+        assert out == []
+        assert proc.requests_for("notifications/cancelled") == []
+
 
 class TestToolsList:
     def test_tools_list_proxied_from_studio(self, drive_bridge):
@@ -96,6 +106,33 @@ class TestToolsList:
             responder=lambda p: None,
         )
         assert out[0]["result"] == {"tools": []}
+
+
+class TestToolsCall:
+    def test_tools_call_routed_through_session_manager(self, drive_bridge):
+        # Exercises the _HANDLERS "tools/call" entry: the bridge must hand the
+        # call to the session manager and return its result under the host id.
+        def responder(p):
+            if p.get("method") == "tools/call" and p.get("params", {}).get("name") == "list_roblox_studios":
+                return {"result": {"content": [{"type": "text", "text": "{}"}]}}
+            return default_responder(p)
+
+        out, proc, _ = drive_bridge(
+            [
+                _line(
+                    {
+                        "jsonrpc": "2.0",
+                        "id": 11,
+                        "method": "tools/call",
+                        "params": {"name": "list_roblox_studios", "arguments": {}},
+                    }
+                )
+            ],
+            responder=responder,
+        )
+        assert out[0]["id"] == 11
+        assert out[0]["result"] == {"content": [{"type": "text", "text": "{}"}]}
+        assert proc.tool_calls_for("list_roblox_studios")
 
 
 class TestServerDiscover:
@@ -153,6 +190,23 @@ class TestErrorHandling:
         # was forwarded with a decoupled id
         fwd = proc.requests_for("totally/unknown")
         assert len(fwd) == 1 and fwd[0]["id"] >= 100001
+
+    def test_non_string_method_is_forwarded_not_crashed(self, drive_bridge):
+        # A spec-violating non-string `method` must not blow up the _HANDLERS
+        # lookup; with an id it falls through to the forward/METHOD_NOT_FOUND path.
+        out, proc, _ = drive_bridge(
+            [_line({"jsonrpc": "2.0", "id": 12, "method": ["not", "a", "string"]})],
+            responder=lambda p: None,
+        )
+        assert out[0]["id"] == 12
+        assert out[0]["error"]["code"] == METHOD_NOT_FOUND
+
+    def test_non_string_method_notification_is_dropped(self, drive_bridge):
+        out, _, _ = drive_bridge(
+            [_line({"jsonrpc": "2.0", "method": {"weird": True}})],
+            responder=default_responder,
+        )
+        assert out == []
 
     def test_unknown_method_returns_studio_result_when_available(self, drive_bridge):
         out, _, _ = drive_bridge(

@@ -26,7 +26,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 _No behavioural change — CLI, protocol handling, and resolver results are identical._
 
 - `core/bridge.py`: the `_dispatch` if/elif ladder is now a method-name → handler
-  table (`_HANDLERS`), with `_forward_unknown` / `_server_info` extracted.
+  table (`_HANDLERS`), with `_forward_unknown` / `_server_info` extracted. A
+  non-string `method` (spec-violating input) still routes exactly as before.
 - `core/resolver.py`: the duplicated root-dir / `version-*` scan blocks are folded
   into `_candidate_at()`, plus a `_resolve()` helper for best-effort `Path.resolve`.
 - `injector/config_injector.py`: `scrub` / `find_legacy_entries` / `eject` share a

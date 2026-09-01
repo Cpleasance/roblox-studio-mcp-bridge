@@ -107,6 +107,27 @@ class TestGetAllCandidates:
         assert any(c.executable_path == exe for c in cands)
 
 
+class TestCandidateAtDedup:
+    """The shared _candidate_at helper must skip an executable it has already
+    yielded, so overlapping search roots can't produce duplicate candidates."""
+
+    def test_same_exe_seen_twice_is_deduped(self, tmp_path):
+        exe_dir = tmp_path / "Versions"
+        exe_dir.mkdir()
+        (exe_dir / EXE_NAME).write_text("binary")
+
+        seen: set = set()
+        first = RobloxStudioResolver._candidate_at(exe_dir, EXE_NAME, COMPANION_NAME, seen)
+        assert first is not None
+        assert first.executable_path == exe_dir / EXE_NAME
+
+        second = RobloxStudioResolver._candidate_at(exe_dir, EXE_NAME, COMPANION_NAME, seen)
+        assert second is None
+
+    def test_returns_none_when_exe_absent(self, tmp_path):
+        assert RobloxStudioResolver._candidate_at(tmp_path, EXE_NAME, COMPANION_NAME, set()) is None
+
+
 class TestEnvOverride:
     def test_override_file_path(self, isolated_env, monkeypatch, tmp_path):
         custom = tmp_path / "custom" / EXE_NAME

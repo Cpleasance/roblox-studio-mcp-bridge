@@ -297,6 +297,19 @@ class TestScrub:
         result2 = MCPConfigInjector.scrub()
         assert result2 == []
 
+    def test_scrub_skips_non_dict_mcpservers(self, single_target):
+        # Shared _iter_config_servers must skip configs whose mcpServers is not a
+        # dict rather than raise (scrub/eject/find_legacy all rely on this).
+        _write(single_target, {"mcpServers": "garbage"})
+        assert MCPConfigInjector.scrub() == []
+        assert _read(single_target) == {"mcpServers": "garbage"}
+
+    def test_scrub_skips_config_whose_root_is_not_an_object(self, single_target):
+        single_target.parent.mkdir(parents=True, exist_ok=True)
+        single_target.write_text("[1, 2, 3]", encoding="utf-8")
+        assert MCPConfigInjector.scrub() == []
+        assert single_target.read_text(encoding="utf-8") == "[1, 2, 3]"
+
     def test_scrub_case_insensitive_filename_match(self, single_target):
         _write(single_target, {"mcpServers": {"rs": {"command": "CMD.EXE", "args": ["/c", "...\\MCP.BAT"]}}})
         result = MCPConfigInjector.scrub()

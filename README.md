@@ -220,7 +220,7 @@ git clone https://github.com/Cpleasance/roblox-studio-mcp-bridge
 cd roblox-studio-mcp-bridge
 pip install -e ".[dev]"
 
-python -m pytest        # run the test suite (118 tests)
+python -m pytest        # run the test suite
 ruff check .            # lint
 ruff format .           # format
 ```
