@@ -121,6 +121,38 @@ class TestInject:
         data = _read(single_target)
         assert data["mcpServers"]["roblox_studio"]["command"] == "/opt/py/bin/python"
 
+    def test_pip_mode_omits_cwd_and_pythonpath(self, single_target):
+        MCPConfigInjector.inject(mode="pip")
+        entry = _read(single_target)["mcpServers"]["roblox_studio"]
+        assert entry["command"] == sys.executable
+        assert entry["args"] == ["-m", "roblox_studio_mcp", "run"]
+        assert "cwd" not in entry
+        assert "PYTHONPATH" not in entry["env"]
+        assert entry["env"]["PYTHONIOENCODING"] == "utf-8"
+
+    def test_uvx_mode_uses_uvx_command(self, single_target):
+        MCPConfigInjector.inject(mode="uvx")
+        entry = _read(single_target)["mcpServers"]["roblox_studio"]
+        assert entry["command"] == "uvx"
+        assert entry["args"] == ["roblox-studio-mcp", "run"]
+        assert "cwd" not in entry
+
+    def test_repo_mode_binds_to_checkout(self, single_target):
+        MCPConfigInjector.inject(mode="repo")
+        entry = _read(single_target)["mcpServers"]["roblox_studio"]
+        assert entry["cwd"] == entry["env"]["PYTHONPATH"]
+        assert entry["args"] == ["-m", "roblox_studio_mcp", "run"]
+
+    def test_auto_mode_detects_this_checkout_as_repo(self, single_target):
+        # The test suite runs from the source tree (pyproject.toml + .git present).
+        assert MCPConfigInjector.detect_mode() == "repo"
+        MCPConfigInjector.inject(mode="auto")
+        assert "cwd" in _read(single_target)["mcpServers"]["roblox_studio"]
+
+    def test_build_bridge_entry_rejects_unknown_mode(self):
+        with pytest.raises(ValueError):
+            MCPConfigInjector.build_bridge_entry("banana")
+
     def test_preserves_unrelated_servers(self, single_target):
         _write(single_target, {"mcpServers": {"other": {"command": "foo"}}, "misc": 1})
         MCPConfigInjector.inject()

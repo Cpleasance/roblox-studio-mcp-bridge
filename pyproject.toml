@@ -10,6 +10,7 @@ readme = "README.md"
 authors = [{ name = "Cory Pleasance" }]
 license = { text = "MIT" }
 requires-python = ">=3.8"
+dependencies = []
 keywords = ["roblox", "roblox-studio", "mcp", "model-context-protocol", "claude", "cursor", "ai-agents"]
 classifiers = [
     "Development Status :: 5 - Production/Stable",
@@ -23,6 +24,9 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Build Tools",
+    "Topic :: Games/Entertainment",
+    "Environment :: Console",
 ]
 
 [project.optional-dependencies]
@@ -33,6 +37,7 @@ roblox-studio-mcp = "roblox_studio_mcp.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/Cpleasance/roblox-studio-mcp-bridge"
+Documentation = "https://github.com/Cpleasance/roblox-studio-mcp-bridge#readme"
 Repository = "https://github.com/Cpleasance/roblox-studio-mcp-bridge.git"
 "Bug Tracker" = "https://github.com/Cpleasance/roblox-studio-mcp-bridge/issues"
 Changelog = "https://github.com/Cpleasance/roblox-studio-mcp-bridge/blob/main/CHANGELOG.md"
