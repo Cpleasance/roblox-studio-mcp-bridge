@@ -165,6 +165,75 @@ class TestEnvOverride:
         assert cands[0].version_dir.name == "version-fallback"
 
 
+class TestPlatformSearchRoots:
+    """Exercise the darwin / linux search-root arms of get_all_candidates on any
+    host by stubbing sys.platform. The win32 arm is already covered by the
+    isolated_env fixture above; these run everywhere. get_all_candidates only
+    branches on the platform string and probes the filesystem via .exists(), so a
+    fake tree under a stubbed home is sufficient.
+    """
+
+    @pytest.fixture
+    def stub_home(self, monkeypatch, tmp_path):
+        monkeypatch.delenv("ROBLOX_STUDIO_MCP_PATH", raising=False)
+        monkeypatch.delenv("STUDIO_MCP_PATH", raising=False)
+        monkeypatch.delenv("LOCALAPPDATA", raising=False)
+        home = tmp_path / "home"
+        home.mkdir()
+        monkeypatch.setattr("pathlib.Path.home", classmethod(lambda cls: home))
+        return home
+
+    def test_macos_versions_root(self, stub_home, monkeypatch):
+        monkeypatch.setattr(sys, "platform", "darwin")
+        vdir = stub_home / "Library" / "Roblox" / "Versions" / "version-mac"
+        vdir.mkdir(parents=True)
+        (vdir / "StudioMCP").write_text("binary")
+        cands = RobloxStudioResolver.get_all_candidates()
+        assert [c.version_dir.name for c in cands] == ["version-mac"]
+        assert cands[0].executable_path.name == "StudioMCP"
+
+    def test_macos_app_bundle_root(self, stub_home, monkeypatch):
+        monkeypatch.setattr(sys, "platform", "darwin")
+        macos = stub_home / "Applications" / "RobloxStudio.app" / "Contents" / "MacOS"
+        macos.mkdir(parents=True)
+        (macos / "StudioMCP").write_text("binary")
+        (macos / "RobloxStudio").write_text("studio")
+        cands = RobloxStudioResolver.get_all_candidates()
+        assert any(c.version_dir == macos for c in cands)
+        assert cands[0].has_studio_beta is True
+
+    def test_macos_empty_tree_returns_nothing(self, stub_home, monkeypatch):
+        monkeypatch.setattr(sys, "platform", "darwin")
+        assert RobloxStudioResolver.get_all_candidates() == []
+
+    def test_linux_local_share_root(self, stub_home, monkeypatch):
+        monkeypatch.setattr(sys, "platform", "linux")
+        vdir = stub_home / ".local" / "share" / "roblox" / "Versions" / "version-lin"
+        vdir.mkdir(parents=True)
+        (vdir / "StudioMCP").write_text("binary")
+        cands = RobloxStudioResolver.get_all_candidates()
+        assert [c.version_dir.name for c in cands] == ["version-lin"]
+
+    def test_linux_flatpak_root(self, stub_home, monkeypatch):
+        monkeypatch.setattr(sys, "platform", "linux")
+        vdir = (
+            stub_home / ".var" / "app" / "com.roblox.RobloxStudio" / "data"
+            / "Roblox" / "Versions" / "version-fp"
+        )
+        vdir.mkdir(parents=True)
+        (vdir / "StudioMCP").write_text("binary")
+        cands = RobloxStudioResolver.get_all_candidates()
+        assert [c.version_dir.name for c in cands] == ["version-fp"]
+
+    def test_non_win_non_darwin_uses_linux_arm(self, stub_home, monkeypatch):
+        monkeypatch.setattr(sys, "platform", "freebsd13")
+        vdir = stub_home / ".local" / "share" / "roblox" / "Versions" / "version-bsd"
+        vdir.mkdir(parents=True)
+        (vdir / "StudioMCP").write_text("binary")
+        cands = RobloxStudioResolver.get_all_candidates()
+        assert [c.version_dir.name for c in cands] == ["version-bsd"]
+
+
 class TestResolveExecutable:
     def test_raises_filenotfound_when_nothing_found(self, isolated_env):
         with pytest.raises(FileNotFoundError):
