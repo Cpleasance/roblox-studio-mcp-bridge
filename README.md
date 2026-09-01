@@ -27,7 +27,7 @@ Roblox Corporation. "Roblox" and "Roblox Studio" are trademarks of Roblox Corpor
 own risk. The bridge only launches Roblox's own local `StudioMCP` executable and edits local IDE
 configuration files; it opens no network listeners.
 
-Current release: **v1.2.0** (first public release). See [CHANGELOG.md](CHANGELOG.md).
+Current release: **v1.2.1**. See [CHANGELOG.md](CHANGELOG.md).
 
 ---
 

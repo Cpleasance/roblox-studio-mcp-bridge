@@ -9,6 +9,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _No unreleased changes yet._
 
+## [1.2.1] - 2026-09-01
+
+### Added
+
+- **1-Click Click-and-Play Installers** — double-clickable installers for Windows
+  (`install.bat`, `install.ps1`) and macOS (`install.command`, `install.sh`).
+  Includes smart multi-strategy Python detection (`python`, `py -3`, `python3`),
+  automatic package registration (`pip install -e .`), multi-IDE config injection,
+  and diagnostic validation in a single click.
+- **1-Click Uninstallers** — `uninstall.bat` and `uninstall.sh` for clean removal
+  across all supported IDEs.
+- **Automatic Self-Healing on Startup** — `RobloxMCPBridge.run()` now automatically
+  calls `scrub()` before initializing. Any conflicting `mcp.bat` launchers
+  re-added by weekly Roblox Studio updates are silently purged on startup,
+  guaranteeing a clean connection without requiring manual user intervention.
+- **`scrub` CLI command** (`python -m roblox_studio_mcp scrub`) — dedicated command
+  to scan and remove broken legacy `mcp.bat` launcher entries from all IDE configs
+  without touching the bridge or unrelated MCP servers.
+- **`doctor` legacy entry detection** — diagnostic check now actively scans for
+  conflicting `mcp.bat` entries and suggests the remediation command.
+
+### Fixed
+
+- **Antigravity config location** — corrected primary config target path to
+  `~/.gemini/antigravity/mcp_config.json` across Windows, macOS, and Linux
+  (previously wrote to `~/.antigravity/mcp_config.json` which Antigravity did not read).
+  Legacy paths are preserved as fallbacks for forks.
+- **Target path filtering** — `inject()` now only writes to config files that
+  already exist on the machine (or creates the primary path when none exist),
+  preventing ghost config files from being created in unused fallback locations.
+- **Targeted startup error hints** — when StudioMCP's initialize handshake fails,
+  `bridge.py` inspects `stderr_log` for the `expect initialized request` signature
+  and outputs a targeted hint explaining the `mcp.bat` race condition.
+- **Dynamic package versioning** — `bridge.py` now references `__version__` dynamically
+  rather than hardcoding static version strings.
+
 ## [1.2.0] - 2026-09-01
 
 First public release of the Universal Roblox Studio MCP Bridge: a pure-Python,
@@ -92,5 +128,6 @@ Studio's native `StudioMCP` daemon. Supports Windows and macOS on Python 3.8+.
   Code-OSS-style per-user `.../Antigravity/User/mcp.json`), since Antigravity's
   real config path isn't publicly documented and reports vary by build.
 
-[Unreleased]: https://github.com/Cpleasance/roblox-studio-mcp-bridge/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/Cpleasance/roblox-studio-mcp-bridge/compare/v1.2.1...HEAD
+[1.2.1]: https://github.com/Cpleasance/roblox-studio-mcp-bridge/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/Cpleasance/roblox-studio-mcp-bridge/releases/tag/v1.2.0

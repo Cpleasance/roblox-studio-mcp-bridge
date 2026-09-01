@@ -11,6 +11,7 @@ import sys
 import threading
 from typing import Any, Dict, Optional
 
+from roblox_studio_mcp import __version__
 from roblox_studio_mcp.core._log import get_logger
 from roblox_studio_mcp.core.process import StudioMCPProcess
 from roblox_studio_mcp.core.protocol import (
@@ -32,7 +33,7 @@ logger = get_logger(__name__)
 _DEFAULT_INIT_RESULT = {
     "protocolVersion": MCP_PROTOCOL_VERSION,
     "capabilities": {"tools": {"listChanged": True}},
-    "serverInfo": {"name": "RobloxStudio", "version": "1.2.0"},
+    "serverInfo": {"name": "RobloxStudio", "version": __version__},
 }
 
 # Server->client notifications that are safe and useful to relay from StudioMCP
@@ -99,7 +100,7 @@ class RobloxMCPBridge:
                 "params": {
                     "protocolVersion": MCP_PROTOCOL_VERSION,
                     "capabilities": {"tools": {"listChanged": True}},
-                    "clientInfo": {"name": "universal_roblox_bridge", "version": "1.2.0"},
+                    "clientInfo": {"name": "universal_roblox_bridge", "version": __version__},
                 },
             },
             timeout=8.0,
@@ -267,7 +268,7 @@ class RobloxMCPBridge:
                     req_id,
                     {
                         "tools": tools_list,
-                        "serverInfo": {"name": "RobloxStudio", "version": "1.2.0"},
+                        "serverInfo": {"name": "RobloxStudio", "version": __version__},
                     },
                 )
             )
