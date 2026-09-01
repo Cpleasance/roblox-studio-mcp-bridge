@@ -191,9 +191,11 @@ python -m roblox_studio_mcp run
 python -m roblox_studio_mcp doctor
 
 # Inject the roblox_studio MCP server entry (default: every detected IDE).
+# On Windows, you can double-click install.bat (or run powershell install.ps1).
 python -m roblox_studio_mcp inject --target all
 
 # Remove the roblox_studio entry again, leaving other servers untouched.
+# On Windows, you can double-click uninstall.bat (or run powershell uninstall.ps1).
 python -m roblox_studio_mcp eject --target all
 ```
 

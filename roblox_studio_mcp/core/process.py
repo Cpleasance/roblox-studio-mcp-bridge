@@ -21,8 +21,12 @@ logger = get_logger(__name__)
 class StudioMCPProcess:
     """Manages the StudioMCP child process with non-blocking stdio/stderr threads."""
 
-    def __init__(self, executable_path: Path):
+    def __init__(self, executable_path: Path, on_notification=None):
         self.executable_path = executable_path
+        # Called with the raw payload for any JSON-RPC message the child emits
+        # that has no ``id`` but does have a ``method`` (i.e. a server->client
+        # notification such as ``notifications/tools/list_changed``).
+        self._on_notification = on_notification
         self.proc: Optional[subprocess.Popen] = None
         self._pending_futures: Dict[Any, Tuple[threading.Event, Dict[str, Any]]] = {}
         self._lock = threading.Lock()
@@ -72,7 +76,9 @@ class StudioMCPProcess:
                     # StudioMCP occasionally emits non-JSON banner lines on stdout.
                     logger.debug("Ignoring non-JSON stdout line: %s (%s)", line_str[:200], e)
                     continue
-                req_id = payload.get("id") if isinstance(payload, dict) else None
+                if not isinstance(payload, dict):
+                    continue
+                req_id = payload.get("id")
                 if req_id is not None:
                     with self._lock:
                         fut = self._pending_futures.get(req_id)
@@ -80,6 +86,12 @@ class StudioMCPProcess:
                             event, container = fut
                             container["response"] = payload
                             event.set()
+                elif payload.get("method") and self._on_notification is not None:
+                    # Server-initiated notification (no id) - e.g. tools/list_changed.
+                    try:
+                        self._on_notification(payload)
+                    except Exception as e:
+                        logger.debug("on_notification handler raised: %s", e)
             except Exception as e:
                 logger.debug("stdout reader loop terminating: %s", e)
                 break
