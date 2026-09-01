@@ -12,6 +12,7 @@ import threading
 from typing import Any, Dict, Optional
 
 from roblox_studio_mcp import __version__
+from roblox_studio_mcp.core import batfix
 from roblox_studio_mcp.core._log import get_logger
 from roblox_studio_mcp.core.process import StudioMCPProcess
 from roblox_studio_mcp.core.protocol import (
@@ -184,7 +185,17 @@ class RobloxMCPBridge:
                     cleaned,
                 )
         except Exception as e:  # pragma: no cover - defensive
-            logger.debug("Auto-scrub failed (non-fatal): %s", e)
+            logger.warning("Auto-scrub failed (non-fatal, bridge continues): %s", e)
+
+        # Also repair Roblox's mcp.bat launcher itself, so configs that point at
+        # it directly (Roblox's own docs, or an IDE Roblox wrote into) work even
+        # when they never touch the bridge's entry. Re-heals after Studio updates.
+        try:
+            repaired = batfix.repair_roblox_launchers()
+            if repaired:
+                logger.info("Repaired Roblox's broken mcp.bat launcher: %s", repaired)
+        except Exception as e:  # pragma: no cover - defensive
+            logger.warning("mcp.bat auto-repair failed (non-fatal, bridge continues): %s", e)
 
         try:
             self.bootstrap_studiomcp()

@@ -16,24 +16,40 @@ _COMMON_ENV = {"PYTHONIOENCODING": "utf-8", "PYTHONUNBUFFERED": "1"}
 _INJECT_MODES = ("auto", "repo", "pip", "uvx")
 
 
-def _is_legacy_roblox_mcp_bat_entry(entry: object) -> bool:
-    """True if ``entry`` is an MCP server config that shells out to Roblox's own
-    ``mcp.bat`` launcher.
+def _is_roblox_native_entry(entry: object) -> bool:
+    """True if ``entry`` is Roblox Studio's own auto-generated MCP server config.
 
-    Roblox Studio itself (or its installer) writes an entry like this straight
-    into detected IDE configs when the MCP beta feature is enabled - independent
-    of this bridge, and usually under a different key such as ``Roblox_Studio``.
-    That launcher has two well-known bugs this bridge exists to work around (a
-    ``server/discover``-before-``initialize`` crash, and a broken multi-line
-    ``if/else`` in the generated batch file), so if it is still present alongside
-    our own entry it will intermittently win the race and produce exactly those
-    errors. We only match on the ``mcp.bat`` fingerprint - nothing else uses
-    that filename - so this can't misfire on an unrelated server.
+    Roblox Studio itself (or a user following Roblox's setup docs) writes an entry
+    like this straight into detected IDE configs when the *Model Context Protocol*
+    beta feature is enabled - independent of this bridge, and usually under the
+    key ``Roblox_Studio``. It has two well-known bugs this bridge exists to work
+    around (a ``server/discover``-before-``initialize`` crash, and a broken
+    multi-line ``if/else`` in the generated ``mcp.bat``), so if it is present
+    alongside our own entry it produces exactly the errors users report.
+
+    We match Roblox's launcher by fingerprint, never our own entry:
+
+    - ``mcp.bat`` / ``mcp.sh`` in the command or args (the Windows/Linux form)
+    - a bare ``StudioMCP`` / ``StudioMCP.exe`` invocation (Roblox's macOS form,
+      and any "point straight at the daemon" variant) - we always wrap the
+      daemon through our resolver instead
+
+    It never matches our own bridge entry, which names the package/distribution.
     """
     if not isinstance(entry, dict):
         return False
-    haystack = " ".join(str(v).lower() for v in (entry.get("command"), *(entry.get("args") or [])) if v is not None)
-    return "mcp.bat" in haystack
+    haystack = " ".join(
+        str(v) for v in (entry.get("command"), *(entry.get("args") or [])) if v is not None
+    ).lower().replace("\\", "/")
+    if not haystack:
+        return False
+    if "roblox_studio_mcp" in haystack or "roblox-studio-mcp-bridge" in haystack:
+        return False
+    return "mcp.bat" in haystack or "mcp.sh" in haystack or "studiomcp" in haystack
+
+
+# Backwards-compatible alias (the fingerprint used to be ``mcp.bat``-only).
+_is_legacy_roblox_mcp_bat_entry = _is_roblox_native_entry
 
 
 class MCPConfigInjector:
@@ -115,10 +131,10 @@ class MCPConfigInjector:
 
     @staticmethod
     def _legacy_keys(servers: Dict) -> List[str]:
-        """Return the keys of every legacy Roblox ``mcp.bat`` entry (never ours)."""
+        """Return the keys of every Roblox-native (broken) entry - never ours."""
         return [
             k for k, v in servers.items()
-            if k != "roblox_studio" and _is_legacy_roblox_mcp_bat_entry(v)
+            if k != "roblox_studio" and _is_roblox_native_entry(v)
         ]
 
     @staticmethod
@@ -246,8 +262,9 @@ class MCPConfigInjector:
                 servers = data["mcpServers"]
                 for key in cls._legacy_keys(servers):
                     logger.warning(
-                        "Removing conflicting legacy entry %r from %s (it shells out to Roblox's "
-                        "broken mcp.bat and will intermittently crash the connection)",
+                        "Removing Roblox's own %r entry from %s (its mcp.bat launcher has a "
+                        "broken multi-line if/else that crashes the connection); the bridge's "
+                        "'roblox_studio' entry replaces it",
                         key,
                         config_path,
                     )
