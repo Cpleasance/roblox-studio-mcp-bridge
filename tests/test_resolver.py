@@ -245,6 +245,31 @@ class TestResolveExecutable:
         assert RobloxStudioResolver.resolve_executable() == newest
 
 
+class TestResolveNeverRaises:
+    """``_resolve`` is a best-effort ``Path.resolve`` used while de-duplicating
+    search roots and candidates; a resolve that raises (symlink loops ->
+    ``RuntimeError``, unreadable path / bad drive -> ``OSError``) must degrade to
+    returning the original path rather than aborting discovery."""
+
+    @pytest.mark.parametrize("exc", [OSError("bad path"), RuntimeError("symlink loop")])
+    def test_falls_back_to_input_path_on_error(self, exc):
+        class _BoomPath:
+            def resolve(self_inner):
+                raise exc
+
+        p = _BoomPath()
+        assert RobloxStudioResolver._resolve(p) is p
+
+    def test_get_all_candidates_survives_resolve_failure(self, isolated_env, monkeypatch):
+        _make_version_dir(isolated_env, "version-aaaaaaaaaaaa")
+        monkeypatch.setattr(
+            "pathlib.Path.resolve",
+            lambda self, *a, **k: (_ for _ in ()).throw(OSError("resolve blew up")),
+        )
+        cands = RobloxStudioResolver.get_all_candidates()
+        assert [c.version_dir.name for c in cands] == ["version-aaaaaaaaaaaa"]
+
+
 def test_studio_candidate_is_a_dataclass():
     c = StudioCandidate(executable_path="a", version_dir="b", last_modified=1.0, has_studio_beta=False)
     assert c.executable_path == "a"
