@@ -12,6 +12,26 @@ from roblox_studio_mcp.core._log import get_logger
 logger = get_logger(__name__)
 
 
+def _is_legacy_roblox_mcp_bat_entry(entry: object) -> bool:
+    """True if ``entry`` is an MCP server config that shells out to Roblox's own
+    ``mcp.bat`` launcher.
+
+    Roblox Studio itself (or its installer) writes an entry like this straight
+    into detected IDE configs when the MCP beta feature is enabled - independent
+    of this bridge, and usually under a different key such as ``Roblox_Studio``.
+    That launcher has two well-known bugs this bridge exists to work around (a
+    ``server/discover``-before-``initialize`` crash, and a broken multi-line
+    ``if/else`` in the generated batch file), so if it is still present alongside
+    our own entry it will intermittently win the race and produce exactly those
+    errors. We only match on the ``mcp.bat`` fingerprint - nothing else uses
+    that filename - so this can't misfire on an unrelated server.
+    """
+    if not isinstance(entry, dict):
+        return False
+    haystack = " ".join(str(v).lower() for v in (entry.get("command"), *(entry.get("args") or [])) if v is not None)
+    return "mcp.bat" in haystack
+
+
 class MCPConfigInjector:
     """Detects installed AI IDEs and safely injects roblox_studio MCP server config."""
 
@@ -95,7 +115,19 @@ class MCPConfigInjector:
                 if "mcpServers" not in data or not isinstance(data["mcpServers"], dict):
                     data["mcpServers"] = {}
 
-                data["mcpServers"]["roblox_studio"] = bridge_entry
+                servers = data["mcpServers"]
+                for key in [
+                    k for k, v in servers.items() if k != "roblox_studio" and _is_legacy_roblox_mcp_bat_entry(v)
+                ]:
+                    logger.warning(
+                        "Removing conflicting legacy entry %r from %s (it shells out to Roblox's "
+                        "broken mcp.bat and will intermittently crash the connection)",
+                        key,
+                        config_path,
+                    )
+                    del servers[key]
+
+                servers["roblox_studio"] = bridge_entry
 
                 # Atomic write
                 temp_file = config_path.with_suffix(".tmp")
