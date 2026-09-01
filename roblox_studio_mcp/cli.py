@@ -43,6 +43,19 @@ def cmd_doctor(args):
             exists = p.exists()
             print(f"    {'✅' if exists else '⚪'} {p} ({'Exists' if exists else 'Not created yet'})")
 
+    # 3. Legacy mcp.bat entry check
+    print("\n🔍 Checking for Roblox's broken mcp.bat entries...")
+    legacy = MCPConfigInjector.find_legacy_entries()
+    if legacy:
+        print("⚠️  WARNING: Found legacy Roblox mcp.bat entries that will intermittently crash the")
+        print("   bridge connection. Roblox Studio re-adds these on every weekly auto-update.")
+        for cfg_path, keys in legacy.items():
+            print(f"   {cfg_path}: {', '.join(repr(k) for k in keys)}")
+        print("\n   Run the following to remove them:")
+        print("     python -m roblox_studio_mcp scrub")
+    else:
+        print("✅ No conflicting Roblox mcp.bat entries found.")
+
     print("\n✨ Diagnostic check completed.")
 
 
@@ -53,9 +66,25 @@ def cmd_inject(args):
         for f in files:
             print(f"  ✅ Updated: {f}")
         print(f"\n🎉 Successfully injected into {len(files)} config file(s)!")
-        print("👉 Please restart Claude Desktop / Cursor for changes to take effect.")
+        print("👉 Please restart Claude Desktop / Cursor / Antigravity for changes to take effect.")
+        print()
+        print("⚠️  Note: Roblox Studio re-adds its own broken mcp.bat entry on every weekly")
+        print("   auto-update. If the connection starts crashing after a Studio update, run:")
+        print("     python -m roblox_studio_mcp scrub")
     else:
         print("⚠️ No config files updated.")
+
+
+def cmd_scrub(args):
+    print("🧹 Scanning for Roblox's broken mcp.bat entries...")
+    files = MCPConfigInjector.scrub(target_name=args.target)
+    if files:
+        for f in files:
+            print(f"  ✅ Cleaned: {f}")
+        print(f"\n🎉 Removed conflicting entries from {len(files)} config file(s)!")
+        print("👉 Please restart your IDE for changes to take effect.")
+    else:
+        print("✅ No conflicting Roblox mcp.bat entries found — nothing to clean up.")
 
 
 def cmd_eject(args):
@@ -85,8 +114,20 @@ def main():
     subparsers.add_parser("doctor", help="Run system diagnostics and verify Roblox Studio MCP status")
 
     # inject
-    inject_parser = subparsers.add_parser("inject", help="Auto-inject config into Claude Desktop, Cursor, OpenCode")
+    inject_parser = subparsers.add_parser("inject", help="Auto-inject config into Claude Desktop, Cursor, OpenCode, Antigravity")
     inject_parser.add_argument(
+        "--target",
+        choices=["all", "claude", "cursor", "opencode", "antigravity"],
+        default="all",
+        help="Target IDE",
+    )
+
+    # scrub
+    scrub_parser = subparsers.add_parser(
+        "scrub",
+        help="Remove Roblox's broken mcp.bat entries from IDE configs (safe to re-run after Studio updates)",
+    )
+    scrub_parser.add_argument(
         "--target",
         choices=["all", "claude", "cursor", "opencode", "antigravity"],
         default="all",
@@ -108,6 +149,8 @@ def main():
         cmd_doctor(args)
     elif args.command == "inject":
         cmd_inject(args)
+    elif args.command == "scrub":
+        cmd_scrub(args)
     elif args.command == "eject":
         cmd_eject(args)
     else:

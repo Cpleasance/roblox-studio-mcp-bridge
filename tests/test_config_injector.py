@@ -45,10 +45,13 @@ class TestGetTargetPaths:
         assert claude.name == "claude_desktop_config.json"
         assert "Claude" in claude.parts
         assert any(p.name == "mcp.json" for p in targets["cursor"])
-        # Antigravity's real config location isn't documented, so we target both
-        # plausible candidates: the Windsurf-lineage dotfile and the Code-OSS
-        # per-user profile file.
-        assert targets["antigravity"][0].name == "mcp_config.json"
+        # Primary Antigravity path is ~/.gemini/antigravity/mcp_config.json
+        primary_ag = targets["antigravity"][0]
+        assert primary_ag.name == "mcp_config.json"
+        assert ".gemini" in primary_ag.parts
+        assert "antigravity" in primary_ag.parts
+        # Legacy fallbacks are still present for Windsurf/Code-OSS forks
+        assert any(p.name == "mcp_config.json" and ".antigravity" in p.parts for p in targets["antigravity"])
         assert any(p.name == "mcp.json" and "Antigravity" in p.parts for p in targets["antigravity"])
 
     @pytest.mark.skipif(sys.platform != "darwin", reason="macOS path layout")
@@ -234,3 +237,103 @@ class TestEject:
         MCPConfigInjector.eject()
         data = _read(single_target)
         assert data["mcpServers"] == {"keep": {"command": "k"}}
+
+
+class TestScrub:
+    """scrub() removes Roblox's broken mcp.bat entries without touching anything else."""
+
+    @pytest.fixture
+    def cfg(self, tmp_path):
+        return tmp_path / "ide" / "mcp.json"
+
+    @pytest.fixture
+    def single_target(self, monkeypatch, cfg):
+        monkeypatch.setattr(MCPConfigInjector, "get_target_paths", staticmethod(lambda: {"claude": [cfg]}))
+        return cfg
+
+    def _legacy_entry(self):
+        return {"command": "cmd.exe", "args": ["/c", "cd /d %LOCALAPPDATA%\\Roblox && .\\mcp.bat"]}
+
+    def test_scrub_removes_legacy_entry(self, single_target):
+        _write(single_target, {"mcpServers": {"Roblox_Studio": self._legacy_entry(), "other": {"command": "x"}}})
+        result = MCPConfigInjector.scrub()
+        assert result == [str(single_target)]
+        data = _read(single_target)
+        assert "Roblox_Studio" not in data["mcpServers"]
+        assert data["mcpServers"]["other"] == {"command": "x"}
+
+    def test_scrub_leaves_bridge_entry_intact(self, single_target):
+        _write(
+            single_target,
+            {
+                "mcpServers": {
+                    "Roblox_Studio": self._legacy_entry(),
+                    "roblox_studio": {"command": "python", "args": ["-m", "roblox_studio_mcp", "run"]},
+                }
+            },
+        )
+        MCPConfigInjector.scrub()
+        data = _read(single_target)
+        assert "Roblox_Studio" not in data["mcpServers"]
+        assert "roblox_studio" in data["mcpServers"]
+
+    def test_scrub_noop_when_no_legacy_entries(self, single_target):
+        _write(single_target, {"mcpServers": {"roblox_studio": {"command": "python"}}})
+        result = MCPConfigInjector.scrub()
+        assert result == []
+
+    def test_scrub_noop_when_file_missing(self, single_target):
+        assert MCPConfigInjector.scrub() == []
+
+    def test_scrub_skips_corrupt_file(self, single_target):
+        single_target.parent.mkdir(parents=True, exist_ok=True)
+        single_target.write_text("{ bad json", encoding="utf-8")
+        assert MCPConfigInjector.scrub() == []
+        assert single_target.read_text(encoding="utf-8") == "{ bad json"
+
+    def test_scrub_idempotent(self, single_target):
+        _write(single_target, {"mcpServers": {"Roblox_Studio": self._legacy_entry()}})
+        MCPConfigInjector.scrub()
+        result2 = MCPConfigInjector.scrub()
+        assert result2 == []
+
+    def test_scrub_case_insensitive_filename_match(self, single_target):
+        _write(single_target, {"mcpServers": {"rs": {"command": "CMD.EXE", "args": ["/c", "...\\MCP.BAT"]}}})
+        result = MCPConfigInjector.scrub()
+        assert result == [str(single_target)]
+        assert _read(single_target)["mcpServers"] == {}
+
+
+class TestFindLegacyEntries:
+    """find_legacy_entries() returns a report without modifying anything."""
+
+    @pytest.fixture
+    def cfg(self, tmp_path):
+        return tmp_path / "ide" / "mcp.json"
+
+    @pytest.fixture
+    def single_target(self, monkeypatch, cfg):
+        monkeypatch.setattr(MCPConfigInjector, "get_target_paths", staticmethod(lambda: {"claude": [cfg]}))
+        return cfg
+
+    def _legacy_entry(self):
+        return {"command": "cmd.exe", "args": ["/c", ".\\mcp.bat"]}
+
+    def test_finds_legacy_key(self, single_target):
+        _write(single_target, {"mcpServers": {"Roblox_Studio": self._legacy_entry()}})
+        found = MCPConfigInjector.find_legacy_entries()
+        assert str(single_target) in found
+        assert found[str(single_target)] == ["Roblox_Studio"]
+
+    def test_empty_when_no_legacy(self, single_target):
+        _write(single_target, {"mcpServers": {"roblox_studio": {"command": "python"}}})
+        assert MCPConfigInjector.find_legacy_entries() == {}
+
+    def test_empty_when_file_missing(self, single_target):
+        assert MCPConfigInjector.find_legacy_entries() == {}
+
+    def test_does_not_modify_file(self, single_target):
+        original = {"mcpServers": {"Roblox_Studio": self._legacy_entry()}}
+        _write(single_target, original)
+        MCPConfigInjector.find_legacy_entries()
+        assert _read(single_target) == original
