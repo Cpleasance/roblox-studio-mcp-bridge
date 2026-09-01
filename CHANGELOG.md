@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _No unreleased changes yet._
 
+## [1.3.2] - 2026-09-01
+
+### Fixed
+
+- **`inject` under `uvx`** — `detect_mode()` now recognises a `uvx` / `uv tool`
+  environment (interpreter under the uv cache or tools dir) and returns `uvx`, so
+  `uvx roblox-studio-mcp-bridge inject` writes a `uvx roblox-studio-mcp-bridge run`
+  entry instead of one pointing at uv's throwaway cache interpreter (which would
+  break once the cache is cleaned).
+
 ## [1.3.1] - 2026-09-01
 
 ### Changed

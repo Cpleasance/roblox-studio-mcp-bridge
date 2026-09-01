@@ -126,16 +126,48 @@ class MCPConfigInjector:
         """The directory that contains the ``roblox_studio_mcp`` package."""
         return Path(__file__).resolve().parent.parent.parent
 
+    @staticmethod
+    def _running_under_uv_tool() -> bool:
+        """True when the interpreter belongs to a ``uvx`` / ``uv tool`` environment.
+
+        Those interpreters live under ``<uv-cache>/…`` or ``<uv-tools>/…`` and are
+        not stable — a config must invoke ``uvx`` rather than hard-code the path.
+        """
+        prefix = Path(sys.prefix).resolve()
+        parts = prefix.parts
+        # Layouts seen in the wild: <localappdata>\uv\cache\archive-v0\<hash>
+        # (Windows), ~/.cache/uv/archive-v0/<hash> (Linux), ~/Library/Caches/uv/…
+        # (macOS), and ~/.local/share/uv/tools/<name> for `uv tool install`.
+        for i in range(len(parts) - 1):
+            nxt = parts[i + 1]
+            if parts[i] == "uv" and (
+                nxt in ("cache", "tools")
+                or nxt.startswith(("archive-v", "builds-v", "environments-v"))
+            ):
+                return True
+        for env_var in ("UV_CACHE_DIR", "UV_TOOL_DIR"):
+            base = os.environ.get(env_var)
+            if base:
+                try:
+                    prefix.relative_to(Path(base).resolve())
+                    return True
+                except (ValueError, OSError):
+                    pass
+        return False
+
     @classmethod
     def detect_mode(cls) -> str:
-        """``"repo"`` when running from a source checkout, otherwise ``"pip"``.
+        """``"repo"`` from a source checkout, ``"uvx"`` from a uv tool env, else ``"pip"``.
 
         A checkout has ``pyproject.toml`` next to the package and a ``.git`` dir;
-        a ``pip``/``uvx`` install lives in ``site-packages`` with neither.
+        a plain ``pip`` install lives in ``site-packages`` with neither; a ``uvx``
+        run lives in a throwaway uv environment.
         """
         root = cls._package_root()
         if (root / "pyproject.toml").is_file() and (root / ".git").exists():
             return "repo"
+        if cls._running_under_uv_tool():
+            return "uvx"
         return "pip"
 
     @classmethod
