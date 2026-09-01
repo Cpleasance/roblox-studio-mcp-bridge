@@ -1,0 +1,9 @@
+# Normalize line endings: LF in the repo, native on checkout is left to the
+# editor / .editorconfig. Force CRLF only where the platform requires it.
+* text=auto eol=lf
+
+*.bat   text eol=crlf
+*.ps1   text eol=crlf
+
+*.png   binary
+*.ico   binary

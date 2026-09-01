@@ -1,11 +1,16 @@
 """Multi-IDE configuration detector and one-click injector."""
 
-import os
-import sys
 import json
+import os
 import shutil
+import sys
 from pathlib import Path
 from typing import Dict, List, Optional
+
+from roblox_studio_mcp.core._log import get_logger
+
+logger = get_logger(__name__)
+
 
 class MCPConfigInjector:
     """Detects installed AI IDEs and safely injects roblox_studio MCP server config."""
@@ -17,7 +22,7 @@ class MCPConfigInjector:
             "claude": [],
             "cursor": [],
             "opencode": [],
-            "antigravity": []
+            "antigravity": [],
         }
 
         if sys.platform == "win32":
@@ -50,27 +55,28 @@ class MCPConfigInjector:
             "command": py_exec,
             "args": ["-m", "roblox_studio_mcp", "run"],
             "cwd": repo_root,
-            "env": {
-                "PYTHONIOENCODING": "utf-8",
-                "PYTHONUNBUFFERED": "1",
-                "PYTHONPATH": repo_root
-            }
+            "env": {"PYTHONIOENCODING": "utf-8", "PYTHONUNBUFFERED": "1", "PYTHONPATH": repo_root},
         }
 
         targets = cls.get_target_paths()
         selected = targets if target_name == "all" else {target_name: targets.get(target_name, [])}
         modified_files = []
 
-        for client_name, path_list in selected.items():
+        for _client_name, path_list in selected.items():
             for config_path in path_list:
                 config_path.parent.mkdir(parents=True, exist_ok=True)
                 data = {"mcpServers": {}}
 
                 if config_path.exists():
                     try:
-                        with open(config_path, "r", encoding="utf-8") as f:
+                        with open(config_path, encoding="utf-8") as f:
                             data = json.load(f)
-                    except Exception:
+                    except (ValueError, OSError) as e:
+                        logger.warning(
+                            "Existing config %s is unreadable (%s); backing up to .corrupt.bak",
+                            config_path,
+                            e,
+                        )
                         shutil.copyfile(config_path, config_path.with_suffix(".corrupt.bak"))
                         data = {"mcpServers": {}}
 
@@ -98,15 +104,16 @@ class MCPConfigInjector:
         selected = targets if target_name == "all" else {target_name: targets.get(target_name, [])}
         modified_files = []
 
-        for client_name, path_list in selected.items():
+        for _client_name, path_list in selected.items():
             for config_path in path_list:
                 if not config_path.exists():
                     continue
 
                 try:
-                    with open(config_path, "r", encoding="utf-8") as f:
+                    with open(config_path, encoding="utf-8") as f:
                         data = json.load(f)
-                except Exception:
+                except (ValueError, OSError) as e:
+                    logger.warning("Skipping unreadable config %s: %s", config_path, e)
                     continue
 
                 if "mcpServers" in data and "roblox_studio" in data["mcpServers"]:

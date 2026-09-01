@@ -1,6 +1,10 @@
 @echo off
 setlocal enabledelayedexpansion
 
+rem Run from the repository root so "python -m roblox_studio_mcp" resolves
+rem without requiring an install.
+cd /d "%~dp0"
+
 echo ============================================================
 echo   Roblox Studio MCP Universal Bridge - One-Click Installer
 echo ============================================================

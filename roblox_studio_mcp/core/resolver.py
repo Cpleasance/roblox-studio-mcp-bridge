@@ -2,9 +2,10 @@
 
 import os
 import sys
-from pathlib import Path
 from dataclasses import dataclass
-from typing import List, Optional
+from pathlib import Path
+from typing import List
+
 
 @dataclass
 class StudioCandidate:
@@ -13,11 +14,19 @@ class StudioCandidate:
     last_modified: float
     has_studio_beta: bool
 
+
 class RobloxStudioResolver:
     """Discovers all StudioMCP binaries across user, system, and custom paths."""
-    
+
     @classmethod
     def get_all_candidates(cls) -> List[StudioCandidate]:
+        """Return every discoverable StudioMCP binary, best match first.
+
+        Honors ``ROBLOX_STUDIO_MCP_PATH`` / ``STUDIO_MCP_PATH`` overrides, then
+        scans the known Roblox install roots. Results are sorted so a candidate
+        that ships alongside the Studio Beta binary and has the newest mtime
+        wins.
+        """
         candidates: List[StudioCandidate] = []
 
         # 1. Environment variable override
@@ -25,21 +34,25 @@ class RobloxStudioResolver:
         if env_override:
             p = Path(env_override)
             if p.is_file() and os.access(p, os.X_OK):
-                return [StudioCandidate(
-                    executable_path=p,
-                    version_dir=p.parent,
-                    last_modified=p.stat().st_mtime,
-                    has_studio_beta=True
-                )]
+                return [
+                    StudioCandidate(
+                        executable_path=p,
+                        version_dir=p.parent,
+                        last_modified=p.stat().st_mtime,
+                        has_studio_beta=True,
+                    )
+                ]
             elif p.is_dir():
                 cand = p / ("StudioMCP.exe" if sys.platform == "win32" else "StudioMCP")
                 if cand.is_file():
-                    return [StudioCandidate(
-                        executable_path=cand,
-                        version_dir=p,
-                        last_modified=cand.stat().st_mtime,
-                        has_studio_beta=True
-                    )]
+                    return [
+                        StudioCandidate(
+                            executable_path=cand,
+                            version_dir=p,
+                            last_modified=cand.stat().st_mtime,
+                            has_studio_beta=True,
+                        )
+                    ]
 
         search_roots = []
         exe_name = "StudioMCP.exe" if sys.platform == "win32" else "StudioMCP"
@@ -51,18 +64,22 @@ class RobloxStudioResolver:
             prog_files = os.getenv("ProgramFiles", r"C:\Program Files")
             prog_files_x86 = os.getenv("ProgramFiles(x86)", r"C:\Program Files (x86)")
 
-            search_roots.extend([
-                Path(local_appdata) / "Roblox" / "Versions",
-                Path(prog_files) / "Roblox" / "Versions",
-                Path(prog_files_x86) / "Roblox" / "Versions",
-            ])
+            search_roots.extend(
+                [
+                    Path(local_appdata) / "Roblox" / "Versions",
+                    Path(prog_files) / "Roblox" / "Versions",
+                    Path(prog_files_x86) / "Roblox" / "Versions",
+                ]
+            )
         elif sys.platform == "darwin":
             home = Path.home()
-            search_roots.extend([
-                Path("/Applications/RobloxStudio.app/Contents/MacOS"),
-                home / "Applications" / "RobloxStudio.app" / "Contents" / "MacOS",
-                home / "Library" / "Roblox" / "Versions",
-            ])
+            search_roots.extend(
+                [
+                    Path("/Applications/RobloxStudio.app/Contents/MacOS"),
+                    home / "Applications" / "RobloxStudio.app" / "Contents" / "MacOS",
+                    home / "Library" / "Roblox" / "Versions",
+                ]
+            )
 
         for root_path in search_roots:
             if not root_path.exists():
@@ -71,24 +88,28 @@ class RobloxStudioResolver:
             # Check root directory
             direct_exe = root_path / exe_name
             if direct_exe.is_file():
-                candidates.append(StudioCandidate(
-                    executable_path=direct_exe,
-                    version_dir=root_path,
-                    last_modified=direct_exe.stat().st_mtime,
-                    has_studio_beta=(root_path / companion_name).is_file()
-                ))
+                candidates.append(
+                    StudioCandidate(
+                        executable_path=direct_exe,
+                        version_dir=root_path,
+                        last_modified=direct_exe.stat().st_mtime,
+                        has_studio_beta=(root_path / companion_name).is_file(),
+                    )
+                )
 
             # Check version subdirectories (e.g. version-xxxxxxxxxxxx)
             for version_folder in root_path.glob("version-*"):
                 if version_folder.is_dir():
                     sub_exe = version_folder / exe_name
                     if sub_exe.is_file():
-                        candidates.append(StudioCandidate(
-                            executable_path=sub_exe,
-                            version_dir=version_folder,
-                            last_modified=sub_exe.stat().st_mtime,
-                            has_studio_beta=(version_folder / companion_name).is_file()
-                        ))
+                        candidates.append(
+                            StudioCandidate(
+                                executable_path=sub_exe,
+                                version_dir=version_folder,
+                                last_modified=sub_exe.stat().st_mtime,
+                                has_studio_beta=(version_folder / companion_name).is_file(),
+                            )
+                        )
 
         # Sort primarily by presence of companion Studio binary, secondarily by LastWriteTime (newest first)
         candidates.sort(key=lambda c: (c.has_studio_beta, c.last_modified), reverse=True)
@@ -96,6 +117,7 @@ class RobloxStudioResolver:
 
     @classmethod
     def resolve_executable(cls) -> Path:
+        """Return the best StudioMCP executable path, or raise ``FileNotFoundError``."""
         candidates = cls.get_all_candidates()
         if not candidates:
             raise FileNotFoundError(

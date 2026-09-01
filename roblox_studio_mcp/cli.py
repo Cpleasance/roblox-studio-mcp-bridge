@@ -1,30 +1,32 @@
 """Command Line Interface for Roblox Studio MCP Bridge."""
 
-import sys
 import argparse
 import datetime
+
 from roblox_studio_mcp import __version__
-from roblox_studio_mcp.core.resolver import RobloxStudioResolver
 from roblox_studio_mcp.core.bridge import RobloxMCPBridge
+from roblox_studio_mcp.core.resolver import RobloxStudioResolver
 from roblox_studio_mcp.injector.config_injector import MCPConfigInjector
+
 
 def cmd_run(args):
     bridge = RobloxMCPBridge()
     bridge.run()
 
+
 def cmd_doctor(args):
-    print(f"============================================================")
+    print("============================================================")
     print(f"🩺 Roblox Studio MCP Doctor (v{__version__})")
-    print(f"============================================================\n")
+    print("============================================================\n")
 
     # 1. Resolver Check
     candidates = RobloxStudioResolver.get_all_candidates()
     if candidates:
         print(f"✅ Found {len(candidates)} StudioMCP candidate(s):")
         for i, c in enumerate(candidates):
-            mtime_str = datetime.datetime.fromtimestamp(c.last_modified).strftime('%Y-%m-%d %H:%M:%S')
+            mtime_str = datetime.datetime.fromtimestamp(c.last_modified).strftime("%Y-%m-%d %H:%M:%S")
             tag = " ⭐ (ACTIVE / NEWEST)" if i == 0 else ""
-            print(f"  [{i+1}] {c.executable_path}")
+            print(f"  [{i + 1}] {c.executable_path}")
             print(f"      Version Dir : {c.version_dir.name}")
             print(f"      Modified    : {mtime_str}")
             print(f"      Studio Beta : {'Yes' if c.has_studio_beta else 'No'}{tag}")
@@ -33,7 +35,7 @@ def cmd_doctor(args):
         print("   Please make sure Roblox Studio is installed and has Beta Features -> Model Context Protocol enabled.")
 
     # 2. Config Targets Check
-    print(f"\n📂 IDE Configuration Targets:")
+    print("\n📂 IDE Configuration Targets:")
     targets = MCPConfigInjector.get_target_paths()
     for ide_name, paths in targets.items():
         print(f"  [{ide_name.upper()}]")
@@ -42,6 +44,7 @@ def cmd_doctor(args):
             print(f"    {'✅' if exists else '⚪'} {p} ({'Exists' if exists else 'Not created yet'})")
 
     print("\n✨ Diagnostic check completed.")
+
 
 def cmd_inject(args):
     print("🚀 Injecting Roblox Studio MCP configuration...")
@@ -54,6 +57,7 @@ def cmd_inject(args):
     else:
         print("⚠️ No config files updated.")
 
+
 def cmd_eject(args):
     print("🗑️ Removing Roblox Studio MCP configuration...")
     files = MCPConfigInjector.eject(target_name=args.target)
@@ -64,10 +68,12 @@ def cmd_eject(args):
     else:
         print("⚠️ No matching configurations found to remove.")
 
+
 def main():
     parser = argparse.ArgumentParser(
+        prog="roblox-studio-mcp",
         description="Universal Roblox Studio MCP Bridge CLI",
-        formatter_class=argparse.RawDescriptionHelpFormatter
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("-v", "--version", action="version", version=f"%(prog)s {__version__}")
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
@@ -80,11 +86,21 @@ def main():
 
     # inject
     inject_parser = subparsers.add_parser("inject", help="Auto-inject config into Claude Desktop, Cursor, OpenCode")
-    inject_parser.add_argument("--target", choices=["all", "claude", "cursor", "opencode", "antigravity"], default="all", help="Target IDE")
+    inject_parser.add_argument(
+        "--target",
+        choices=["all", "claude", "cursor", "opencode", "antigravity"],
+        default="all",
+        help="Target IDE",
+    )
 
     # eject
     eject_parser = subparsers.add_parser("eject", help="Remove config from IDEs")
-    eject_parser.add_argument("--target", choices=["all", "claude", "cursor", "opencode", "antigravity"], default="all", help="Target IDE")
+    eject_parser.add_argument(
+        "--target",
+        choices=["all", "claude", "cursor", "opencode", "antigravity"],
+        default="all",
+        help="Target IDE",
+    )
 
     args = parser.parse_args()
 
@@ -97,6 +113,7 @@ def main():
     else:
         # Default to run
         cmd_run(args)
+
 
 if __name__ == "__main__":
     main()

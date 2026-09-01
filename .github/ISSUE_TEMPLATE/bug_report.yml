@@ -1,0 +1,80 @@
+name: Bug report
+description: Report a problem with the Roblox Studio MCP Bridge
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing a bug. Please fill in the details below so we can reproduce it.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened?
+      description: A clear description of the bug and what you expected instead.
+      placeholder: The bridge exits immediately when Cursor connects...
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Configure host with ...
+        2. Start the bridge
+        3. See error
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      description: e.g. Windows 11 23H2, macOS 14.5 (Apple Silicon)
+    validations:
+      required: true
+
+  - type: input
+    id: python
+    attributes:
+      label: Python version
+      description: Output of `python --version`
+      placeholder: Python 3.11.9
+    validations:
+      required: true
+
+  - type: input
+    id: host
+    attributes:
+      label: IDE / MCP host
+      description: e.g. Claude Desktop, Cursor, Claude Code, Antigravity, OpenCode (with version)
+    validations:
+      required: true
+
+  - type: input
+    id: package-version
+    attributes:
+      label: Bridge version
+      description: Output of `python -m roblox_studio_mcp --version`
+      placeholder: 1.2.0
+    validations:
+      required: true
+
+  - type: textarea
+    id: doctor
+    attributes:
+      label: Doctor output
+      description: Paste the full output of `python -m roblox_studio_mcp doctor`.
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Any stderr output or log files. This will be rendered as a code block.
+      render: text
+    validations:
+      required: false
