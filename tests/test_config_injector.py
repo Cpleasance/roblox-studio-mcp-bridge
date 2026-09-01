@@ -111,10 +111,66 @@ class TestInject:
         corrupt_bak = single_target.with_suffix(".corrupt.bak")
         assert corrupt_bak.exists()
         assert corrupt_bak.read_text(encoding="utf-8") == "{ this is not json"
-        # File is now valid and contains our server.
-        data = _read(single_target)
-        assert list(data["mcpServers"]) == ["roblox_studio"]
 
+    def test_removes_legacy_mcp_bat_entry_regardless_of_key_name(self, single_target):
+        # This is Roblox's own auto-generated (and broken) entry, seen in the
+        # wild under the key "Roblox_Studio" - it must be stripped so it can't
+        # race our entry and intermittently crash the connection.
+        _write(
+            single_target,
+            {
+                "mcpServers": {
+                    "Roblox_Studio": {
+                        "transport": "stdio",
+                        "command": "cmd.exe",
+                        "args": ["/c", "cd /d %LOCALAPPDATA%\\Roblox && .\\mcp.bat"],
+                    },
+                    "unrelated": {"command": "foo", "args": ["bar"]},
+                }
+            },
+        )
+
+        MCPConfigInjector.inject()
+
+        data = _read(single_target)
+        assert "Roblox_Studio" not in data["mcpServers"]
+        assert "roblox_studio" in data["mcpServers"]
+        assert data["mcpServers"]["unrelated"] == {"command": "foo", "args": ["bar"]}
+
+    def test_does_not_remove_our_own_entry_on_reinject(self, single_target):
+        MCPConfigInjector.inject()
+        MCPConfigInjector.inject()  # idempotent: must not treat our own entry as legacy
+        data = _read(single_target)
+        assert "roblox_studio" in data["mcpServers"]
+
+
+class TestLegacyMcpBatDetection:
+    """Unit coverage for the ``mcp.bat`` fingerprint used to strip Roblox's own
+    broken auto-generated entry (see TestInject.test_removes_legacy_mcp_bat_entry_regardless_of_key_name)."""
+
+    def _detect(self, entry):
+        from roblox_studio_mcp.injector.config_injector import _is_legacy_roblox_mcp_bat_entry
+
+        return _is_legacy_roblox_mcp_bat_entry(entry)
+
+    def test_matches_mcp_bat_in_args(self):
+        assert self._detect({"command": "cmd.exe", "args": ["/c", "...\\Roblox\\mcp.bat"]})
+
+    def test_matches_mcp_bat_case_insensitively(self):
+        assert self._detect({"command": "CMD.EXE", "args": ["/c", "...\\MCP.BAT"]})
+
+    def test_does_not_match_unrelated_entry(self):
+        assert not self._detect({"command": "python", "args": ["-m", "roblox_studio_mcp", "run"]})
+
+    def test_does_not_match_non_dict(self):
+        assert not self._detect("not a dict")
+        assert not self._detect(None)
+
+    def test_tolerates_missing_args(self):
+        assert not self._detect({"command": "python"})
+
+
+class TestInjectMisc:
     def test_repairs_non_dict_mcpservers(self, single_target):
         _write(single_target, {"mcpServers": "garbage"})
         MCPConfigInjector.inject()

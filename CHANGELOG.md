@@ -45,7 +45,7 @@ Studio's native `StudioMCP` daemon. Supports Windows and macOS on Python 3.8+.
 - **`doctor` diagnostics** — lists every `StudioMCP` candidate (marking the one
   that would be used) and every IDE config path with its existence status.
 - **Windows one-click installers** — `install.bat` and `install.ps1`.
-- **pytest suite** — 98 tests covering the resolver, protocol, process manager,
+- **pytest suite** — 105 tests covering the resolver, protocol, process manager,
   session manager, bridge event loop, and config injector.
 
 ### Fixed
@@ -71,6 +71,15 @@ Studio's native `StudioMCP` daemon. Supports Windows and macOS on Python 3.8+.
   (current StudioMCP builds reject it with "Tool not found", which surfaced in
   Studio's logs and left tool calls without a target). It now passes the
   resolved `studio_id` as a per-call argument, matching the current protocol.
+- `inject` now detects and removes a conflicting legacy MCP server entry -
+  under any key name - that shells out to Roblox's own broken
+  `%LOCALAPPDATA%\Roblox\mcp.bat` launcher (Roblox Studio / its installer
+  writes this directly into IDE configs, commonly as `Roblox_Studio`,
+  independent of this bridge). Left in place it intermittently wins the race
+  against our entry and reproduces exactly the two bugs this bridge fixes: a
+  `server/discover`-before-`initialize` panic and cmd.exe `'else' is not
+  recognized as an internal or external command` from the batch file's broken
+  multi-line `if/else`. Re-running `inject` now cleans it up automatically.
 
 ### Changed
 
