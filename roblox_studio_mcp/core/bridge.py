@@ -83,7 +83,7 @@ class RobloxMCPBridge:
         """Resolve StudioMCP, launch it, and run the internal initialize handshake."""
         exe_path = self.resolver.resolve_executable()  # may raise FileNotFoundError
         logger.info("Using StudioMCP executable: %s", exe_path)
-        self.process = StudioMCPProcess(exe_path)
+        self.process = StudioMCPProcess(exe_path, on_notification=self._on_studio_notification)
         self.session = StudioSessionManager(self.process, self.decoupler)
 
         self.process.start()
@@ -113,6 +113,22 @@ class RobloxMCPBridge:
 
         # Internal notifications/initialized.
         self.process.send_notification({"jsonrpc": "2.0", "method": "notifications/initialized"})
+
+    def _on_studio_notification(self, payload: Dict[str, Any]) -> None:
+        """Relay selected server-initiated notifications from StudioMCP to the host.
+
+        Most importantly ``notifications/tools/list_changed``: StudioMCP fires it
+        when a Studio instance connects and registers its tools, which is how the
+        host learns to re-request ``tools/list`` after starting up before Studio.
+        """
+        method = payload.get("method")
+        if method in _FORWARDED_NOTIFICATIONS:
+            logger.debug("Relaying StudioMCP notification: %s", method)
+            self._write_stdout(
+                {"jsonrpc": "2.0", "method": method, **({"params": payload["params"]} if "params" in payload else {})}
+            )
+        else:
+            logger.debug("Dropping non-forwarded StudioMCP notification: %s", method)
 
     def _handle_exit(self, sig, frame):
         logger.info("Received signal %s; shutting down", sig)
@@ -215,7 +231,7 @@ class RobloxMCPBridge:
             list_id = self.decoupler.allocate_internal_id()
             list_res = self.process.send_request(
                 {"jsonrpc": "2.0", "id": list_id, "method": "tools/list", "params": {}},
-                timeout=5.0,
+                timeout=_TOOLS_LIST_TIMEOUT,
             )
             tools_list = list_res.get("result", {}).get("tools", []) if list_res else []
             self._write_stdout(
@@ -240,7 +256,7 @@ class RobloxMCPBridge:
                     "method": "tools/list",
                     "params": req.get("params", {}),
                 },
-                timeout=8.0,
+                timeout=_TOOLS_LIST_TIMEOUT,
             )
             result_payload = res.get("result", {"tools": []}) if res else {"tools": []}
             self._write_stdout(make_jsonrpc_response(req_id, result_payload))

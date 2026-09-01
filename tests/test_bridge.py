@@ -173,6 +173,56 @@ class TestErrorHandling:
         assert out[0]["error"] == {"code": -32050, "message": "boom"}
 
 
+class TestStudioNotificationRelay:
+    """StudioMCP pushes id-less notifications (e.g. tools/list_changed when a
+    Studio instance connects); the bridge must relay the useful ones to the host."""
+
+    def _bridge(self):
+        from roblox_studio_mcp.core import bridge as bridge_mod
+
+        b = bridge_mod.RobloxMCPBridge()
+        sent = []
+        b._write_stdout = lambda payload: sent.append(payload)
+        return b, sent
+
+    def test_forwards_tools_list_changed(self):
+        b, sent = self._bridge()
+        b._on_studio_notification({"jsonrpc": "2.0", "method": "notifications/tools/list_changed"})
+        assert sent == [{"jsonrpc": "2.0", "method": "notifications/tools/list_changed"}]
+
+    def test_forwards_params_when_present(self):
+        b, sent = self._bridge()
+        b._on_studio_notification(
+            {"jsonrpc": "2.0", "method": "notifications/resources/updated", "params": {"uri": "x"}}
+        )
+        assert sent == [{"jsonrpc": "2.0", "method": "notifications/resources/updated", "params": {"uri": "x"}}]
+
+    def test_drops_unlisted_notification(self):
+        b, sent = self._bridge()
+        b._on_studio_notification({"jsonrpc": "2.0", "method": "notifications/message", "params": {"x": 1}})
+        assert sent == []
+
+    def test_process_manager_dispatches_notifications_to_callback(self):
+        import io
+
+        from roblox_studio_mcp.core import process as process_mod
+
+        seen = []
+        pm = process_mod.StudioMCPProcess("fake", on_notification=seen.append)
+        pm._running = True
+
+        class _Proc:
+            stdout = io.StringIO(
+                '{"jsonrpc":"2.0","method":"notifications/tools/list_changed"}\n'
+                '{"jsonrpc":"2.0","id":5,"result":{"ok":true}}\n'
+            )
+            stderr = io.StringIO("")
+
+        pm.proc = _Proc()
+        pm._stdout_reader_loop()
+        assert seen == [{"jsonrpc": "2.0", "method": "notifications/tools/list_changed"}]
+
+
 class TestMultipleMessages:
     def test_sequential_messages_each_answered(self, drive_bridge):
         out, _, _ = drive_bridge(

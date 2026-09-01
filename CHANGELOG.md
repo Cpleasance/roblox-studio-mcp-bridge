@@ -31,9 +31,11 @@ Studio's native `StudioMCP` daemon. Supports Windows and macOS on Python 3.8+.
   breaks ties by newest modification time. Overridable via
   `ROBLOX_STUDIO_MCP_PATH` / `STUDIO_MCP_PATH`.
 - **Self-healing session manager** — auto-discovers Studio instances with
-  `list_roblox_studios`, binds one with `set_active_studio`, and transparently
-  rebinds and retries (up to 3 attempts with backoff) when a disconnect is
-  detected.
+  `list_roblox_studios`, caches the `studio_id` and injects it into each
+  forwarded tool call, and transparently re-resolves and retries (up to 3
+  attempts with backoff) when a disconnect or stale id is detected. Verified
+  end-to-end against a live Studio place (`execute_luau`, `get_studio_state`,
+  `search_game_tree`, instance creation/cleanup).
 - **Multi-IDE config injector** — `inject` / `eject` subcommands with
   `--target all|claude|cursor|opencode|antigravity`. Writes a `command` /
   `args` / `cwd` / `env` (`PYTHONPATH`, `PYTHONIOENCODING`, `PYTHONUNBUFFERED`)
@@ -43,7 +45,7 @@ Studio's native `StudioMCP` daemon. Supports Windows and macOS on Python 3.8+.
 - **`doctor` diagnostics** — lists every `StudioMCP` candidate (marking the one
   that would be used) and every IDE config path with its existence status.
 - **Windows one-click installers** — `install.bat` and `install.ps1`.
-- **pytest suite** — 89 tests covering the resolver, protocol, process manager,
+- **pytest suite** — 98 tests covering the resolver, protocol, process manager,
   session manager, bridge event loop, and config injector.
 
 ### Fixed
@@ -58,6 +60,17 @@ Studio's native `StudioMCP` daemon. Supports Windows and macOS on Python 3.8+.
 - Signal-handler installation is guarded: it is skipped off the main thread and
   each of `SIGINT` / `SIGTERM` / `SIGBREAK` is installed independently so a
   platform that lacks one does not break the others.
+- `tools/list` / `server/discover` no longer race StudioMCP's internal
+  "waiting for tools" timeout (which runs ~8-10s while no Studio is connected);
+  the bridge now waits long enough to capture the daemon's real answer.
+- Server-initiated notifications from StudioMCP (`notifications/tools/list_changed`
+  and the `resources` / `prompts` variants) are now relayed to the host, so a
+  host that listed tools before Studio was open is told to re-list once Studio
+  connects. Previously all id-less messages from the daemon were dropped.
+- The session manager no longer calls the removed `set_active_studio` tool
+  (current StudioMCP builds reject it with "Tool not found", which surfaced in
+  Studio's logs and left tool calls without a target). It now passes the
+  resolved `studio_id` as a per-call argument, matching the current protocol.
 
 ### Changed
 

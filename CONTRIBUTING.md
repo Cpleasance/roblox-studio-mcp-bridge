@@ -20,7 +20,7 @@ has no dependencies and must keep it that way.
 python -m pytest
 ```
 
-The suite (89 tests) uses fakes for the subprocess and filesystem, so it does
+The suite (98 tests) uses fakes for the subprocess and filesystem, so it does
 not require Roblox Studio to be installed and is safe to run anywhere. Please
 add or update tests for any behavior change and keep the suite green.
 
