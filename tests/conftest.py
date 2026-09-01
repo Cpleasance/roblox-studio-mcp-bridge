@@ -5,6 +5,7 @@ repo root), so we make sure the repo root is importable regardless of how pytest
 was invoked.
 """
 
+import collections
 import io
 import json
 import signal
@@ -35,6 +36,8 @@ class FakeProcess:
         self.stopped = False
         self.requests = []
         self.notifications = []
+        # Mirror StudioMCPProcess so bridge.bootstrap_studiomcp() can read it.
+        self.stderr_log: collections.deque = collections.deque(maxlen=250)
 
     def emit_notification(self, payload):
         """Simulate StudioMCP pushing a server->client notification."""

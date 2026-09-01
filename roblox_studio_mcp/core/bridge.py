@@ -107,7 +107,18 @@ class RobloxMCPBridge:
         if init_res and "result" in init_res:
             self.init_result = init_res["result"]
         else:
-            logger.warning("StudioMCP initialize handshake returned no result; using defaults")
+            # Check stderr for the mcp.bat race-condition fingerprint.  When
+            # Roblox's own broken entry wins the launch race it sends a
+            # server/discover probe before initialize, causing StudioMCP to log
+            # "expect initialized request" and drop the connection.
+            stderr_snapshot = " ".join(self.process.stderr_log)
+            if "mcp.bat" in stderr_snapshot.lower() or "expect initialized request" in stderr_snapshot.lower():
+                logger.warning(
+                    "StudioMCP handshake failed - this looks like Roblox's broken mcp.bat "
+                    "entry is racing the bridge. Run: python -m roblox_studio_mcp scrub"
+                )
+            else:
+                logger.warning("StudioMCP initialize handshake returned no result; using defaults")
             self.init_result = dict(_DEFAULT_INIT_RESULT)
             self.init_result["instructions"] = "Roblox Studio MCP Bridge"
 

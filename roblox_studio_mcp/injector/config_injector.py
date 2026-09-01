@@ -45,18 +45,20 @@ class MCPConfigInjector:
             "antigravity": [],
         }
 
-        # Antigravity's config location isn't documented, and the two forks it
-        # descends from disagree: Windsurf-lineage tools read a dotfile in the
-        # home directory, while plain VS Code / Code-OSS forks read a per-user
-        # profile file under the app's own data directory. We write to both
-        # candidates so `inject` works regardless of which one Antigravity
-        # actually reads; `doctor` lists both paths with their existence status.
+        # Antigravity stores its MCP config under ~/.gemini/antigravity/mcp_config.json
+        # on all platforms. We also include the old ~/.antigravity dotfile and the
+        # VSCode-lineage per-user profile path as fallbacks so users on forks
+        # (Windsurf, Code-OSS, etc.) are still covered; inject() writes to every path
+        # that already exists, or creates the primary one when none exist.
         if sys.platform == "win32":
             appdata = Path(os.environ.get("APPDATA", home / "AppData" / "Roaming"))
             targets["claude"].append(appdata / "Claude" / "claude_desktop_config.json")
             targets["cursor"].append(home / ".cursor" / "mcp.json")
             targets["cursor"].append(appdata / "Cursor" / "User" / "globalStorage" / "roam.cursor-mcp" / "mcp.json")
             targets["opencode"].append(home / ".opencode" / "mcp.json")
+            # Primary: actual Antigravity path (confirmed on Windows)
+            targets["antigravity"].append(home / ".gemini" / "antigravity" / "mcp_config.json")
+            # Legacy fallbacks for Windsurf-lineage forks and VSCode-lineage builds
             targets["antigravity"].append(home / ".antigravity" / "mcp_config.json")
             targets["antigravity"].append(appdata / "Antigravity" / "User" / "mcp.json")
         elif sys.platform == "darwin":
@@ -65,11 +67,13 @@ class MCPConfigInjector:
             targets["cursor"].append(home / ".cursor" / "mcp.json")
             targets["cursor"].append(app_support / "Cursor" / "User" / "globalStorage" / "roam.cursor-mcp" / "mcp.json")
             targets["opencode"].append(home / ".opencode" / "mcp.json")
+            targets["antigravity"].append(home / ".gemini" / "antigravity" / "mcp_config.json")
             targets["antigravity"].append(home / ".antigravity" / "mcp_config.json")
             targets["antigravity"].append(app_support / "Antigravity" / "User" / "mcp.json")
         else:
             targets["cursor"].append(home / ".cursor" / "mcp.json")
             targets["opencode"].append(home / ".opencode" / "mcp.json")
+            targets["antigravity"].append(home / ".gemini" / "antigravity" / "mcp_config.json")
             targets["antigravity"].append(home / ".antigravity" / "mcp_config.json")
             targets["antigravity"].append(home / ".config" / "Antigravity" / "User" / "mcp.json")
 
@@ -92,7 +96,12 @@ class MCPConfigInjector:
         modified_files = []
 
         for _client_name, path_list in selected.items():
-            for config_path in path_list:
+            # For each IDE, only write to paths that already exist, EXCEPT we always
+            # create the first (primary) path when none of the candidates exist yet.
+            existing_paths = [p for p in path_list if p.exists()]
+            paths_to_write = existing_paths if existing_paths else path_list[:1]
+
+            for config_path in paths_to_write:
                 config_path.parent.mkdir(parents=True, exist_ok=True)
                 data = {"mcpServers": {}}
 
@@ -138,6 +147,91 @@ class MCPConfigInjector:
                 modified_files.append(str(config_path))
 
         return modified_files
+
+    @classmethod
+    def scrub(cls, target_name: str = "all") -> List[str]:
+        """Remove any legacy Roblox ``mcp.bat`` entries from all IDE configs.
+
+        Roblox Studio re-injects its own broken ``cmd.exe``/``mcp.bat`` entry into
+        IDE config files on every weekly auto-update, which causes a race that
+        intermittently crashes the bridge connection. This method strips those entries
+        from every config it can find without touching any other servers (including
+        the bridge's own ``roblox_studio`` entry).
+
+        Returns a list of config file paths that were modified.
+        """
+        targets = cls.get_target_paths()
+        selected = targets if target_name == "all" else {target_name: targets.get(target_name, [])}
+        modified_files = []
+
+        for _client_name, path_list in selected.items():
+            for config_path in path_list:
+                if not config_path.exists():
+                    continue
+
+                try:
+                    with open(config_path, encoding="utf-8") as f:
+                        data = json.load(f)
+                except (ValueError, OSError) as e:
+                    logger.warning("Skipping unreadable config %s: %s", config_path, e)
+                    continue
+
+                servers = data.get("mcpServers", {})
+                if not isinstance(servers, dict):
+                    continue
+
+                legacy_keys = [
+                    k for k, v in servers.items()
+                    if k != "roblox_studio" and _is_legacy_roblox_mcp_bat_entry(v)
+                ]
+                if not legacy_keys:
+                    continue
+
+                for key in legacy_keys:
+                    logger.warning(
+                        "scrub: removing legacy mcp.bat entry %r from %s",
+                        key,
+                        config_path,
+                    )
+                    del servers[key]
+
+                with open(config_path, "w", encoding="utf-8") as f:
+                    json.dump(data, f, indent=2)
+                modified_files.append(str(config_path))
+
+        return modified_files
+
+    @classmethod
+    def find_legacy_entries(cls, target_name: str = "all") -> Dict[str, List[str]]:
+        """Return a mapping of config path -> list of legacy mcp.bat key names found.
+
+        Used by ``doctor`` to warn users about active broken entries without
+        modifying any files.
+        """
+        targets = cls.get_target_paths()
+        selected = targets if target_name == "all" else {target_name: targets.get(target_name, [])}
+        found: Dict[str, List[str]] = {}
+
+        for _client_name, path_list in selected.items():
+            for config_path in path_list:
+                if not config_path.exists():
+                    continue
+                try:
+                    with open(config_path, encoding="utf-8") as f:
+                        data = json.load(f)
+                except (ValueError, OSError):
+                    continue
+                servers = data.get("mcpServers", {})
+                if not isinstance(servers, dict):
+                    continue
+                legacy_keys = [
+                    k for k, v in servers.items()
+                    if k != "roblox_studio" and _is_legacy_roblox_mcp_bat_entry(v)
+                ]
+                if legacy_keys:
+                    found[str(config_path)] = legacy_keys
+
+        return found
 
     @classmethod
     def eject(cls, target_name: str = "all") -> List[str]:
