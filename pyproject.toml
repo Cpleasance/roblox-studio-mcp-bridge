@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "roblox-studio-mcp"
+version = "1.2.0"
+description = "Universal, update-proof Model Context Protocol bridge for Roblox Studio on Windows and macOS."
+readme = "README.md"
+authors = [{ name = "Cory Pleasance" }]
+license = { text = "MIT" }
+requires-python = ">=3.8"
+keywords = ["roblox", "roblox-studio", "mcp", "model-context-protocol", "claude", "cursor", "ai-agents"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: MacOS",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+
+[project.scripts]
+roblox-studio-mcp = "roblox_studio_mcp.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/Cpleasance/roblox-studio-mcp-bridge"
+Repository = "https://github.com/Cpleasance/roblox-studio-mcp-bridge.git"
