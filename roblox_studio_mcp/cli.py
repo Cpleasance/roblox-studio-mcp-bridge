@@ -67,7 +67,9 @@ def cmd_doctor(args):
 
 def cmd_inject(args):
     print("🚀 Injecting Roblox Studio MCP configuration...")
-    files = MCPConfigInjector.inject(target_name=args.target)
+    mode = args.mode if args.mode != "auto" else MCPConfigInjector.detect_mode()
+    print(f"   Install mode: {mode}")
+    files = MCPConfigInjector.inject(target_name=args.target, mode=args.mode)
     if files:
         for f in files:
             print(f"  ✅ Updated: {f}")
@@ -124,6 +126,13 @@ def main():
         "inject", help="Auto-inject config into Claude Desktop, Cursor, OpenCode, Antigravity"
     )
     _add_target_arg(inject_parser)
+    inject_parser.add_argument(
+        "--mode",
+        choices=["auto", "repo", "pip", "uvx"],
+        default="auto",
+        help="Config entry style: repo (bind to this checkout), pip (installed package), "
+        "uvx (no install), or auto (detect). Default: auto.",
+    )
     inject_parser.set_defaults(func=cmd_inject)
 
     scrub_parser = subparsers.add_parser(

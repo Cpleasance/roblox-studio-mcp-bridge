@@ -12,6 +12,10 @@ from roblox_studio_mcp.core._log import get_logger
 logger = get_logger(__name__)
 
 
+_COMMON_ENV = {"PYTHONIOENCODING": "utf-8", "PYTHONUNBUFFERED": "1"}
+_INJECT_MODES = ("auto", "repo", "pip", "uvx")
+
+
 def _is_legacy_roblox_mcp_bat_entry(entry: object) -> bool:
     """True if ``entry`` is an MCP server config that shells out to Roblox's own
     ``mcp.bat`` launcher.
@@ -117,17 +121,59 @@ class MCPConfigInjector:
             if k != "roblox_studio" and _is_legacy_roblox_mcp_bat_entry(v)
         ]
 
-    @classmethod
-    def inject(cls, target_name: str = "all", python_path: Optional[str] = None) -> List[str]:
-        py_exec = python_path or sys.executable
-        repo_root = str(Path(__file__).resolve().parent.parent.parent)
+    @staticmethod
+    def _package_root() -> Path:
+        """The directory that contains the ``roblox_studio_mcp`` package."""
+        return Path(__file__).resolve().parent.parent.parent
 
-        bridge_entry = {
+    @classmethod
+    def detect_mode(cls) -> str:
+        """``"repo"`` when running from a source checkout, otherwise ``"pip"``.
+
+        A checkout has ``pyproject.toml`` next to the package and a ``.git`` dir;
+        a ``pip``/``uvx`` install lives in ``site-packages`` with neither.
+        """
+        root = cls._package_root()
+        if (root / "pyproject.toml").is_file() and (root / ".git").exists():
+            return "repo"
+        return "pip"
+
+    @classmethod
+    def build_bridge_entry(cls, mode: str = "auto", python_path: Optional[str] = None) -> Dict:
+        """Return the ``mcpServers.roblox_studio`` entry for the given install mode.
+
+        - ``repo`` — bind ``cwd`` + ``PYTHONPATH`` to the checkout so ``python -m``
+          resolves without an install (the original, move-sensitive behaviour).
+        - ``pip`` — plain ``<python> -m roblox_studio_mcp run``; needs the package
+          installed but has no path dependency.
+        - ``uvx`` — ``uvx roblox-studio-mcp run``; no install step at all.
+        - ``auto`` — ``repo`` from a checkout, else ``pip``.
+        """
+        if mode == "auto":
+            mode = cls.detect_mode()
+        if mode not in _INJECT_MODES or mode == "auto":
+            raise ValueError(f"unknown inject mode {mode!r}; expected one of {_INJECT_MODES}")
+
+        if mode == "uvx":
+            return {"command": "uvx", "args": ["roblox-studio-mcp", "run"], "env": dict(_COMMON_ENV)}
+
+        py_exec = python_path or sys.executable
+        if mode == "pip":
+            return {"command": py_exec, "args": ["-m", "roblox_studio_mcp", "run"], "env": dict(_COMMON_ENV)}
+
+        repo_root = str(cls._package_root())
+        return {
             "command": py_exec,
             "args": ["-m", "roblox_studio_mcp", "run"],
             "cwd": repo_root,
-            "env": {"PYTHONIOENCODING": "utf-8", "PYTHONUNBUFFERED": "1", "PYTHONPATH": repo_root},
+            "env": {**_COMMON_ENV, "PYTHONPATH": repo_root},
         }
+
+    @classmethod
+    def inject(
+        cls, target_name: str = "all", python_path: Optional[str] = None, mode: str = "auto"
+    ) -> List[str]:
+        bridge_entry = cls.build_bridge_entry(mode, python_path)
 
         selected = cls._select_targets(target_name)
         modified_files = []
