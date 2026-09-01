@@ -6,44 +6,63 @@
 [![Python](https://img.shields.io/badge/Python-3.8+-yellow.svg)](https://www.python.org/)
 [![MCP](https://img.shields.io/badge/MCP-2024--11--05-green.svg)](https://modelcontextprotocol.io/)
 
-A pure-Python, standard-library-only [Model Context Protocol](https://modelcontextprotocol.io/) (MCP)
-bridge for **Roblox Studio**. It sits between an AI IDE host (Claude Desktop, Cursor, Claude Code,
-Antigravity, OpenCode, Windsurf) and Roblox Studio's native `StudioMCP` daemon, speaking JSON-RPC 2.0
-over stdio on both sides. The bridge fixes the handshake, pipe-buffer, auto-update, version-selection,
-and session-rebinding problems that make the stock setup unreliable.
+A pure-Python, standard-library-only [Model Context Protocol](https://modelcontextprotocol.io/) bridge
+that connects an AI IDE (Claude Desktop, Cursor, Claude Code, Antigravity, OpenCode, Windsurf) to
+Roblox Studio's native `StudioMCP` daemon. It fixes the handshake, pipe-buffer, auto-update,
+version-selection, and session-rebinding bugs that make the stock setup unreliable.
 
-- **No dependencies.** Runs on CPython 3.8+ with nothing but the standard library.
-- **Update-proof.** Invoked as `python -m roblox_studio_mcp`, so weekly Roblox Studio updates cannot
-  overwrite your configuration.
-- **One command setup.** `python -m roblox_studio_mcp inject` writes the MCP server entry into every
-  supported IDE config it can find.
+*Unofficial community tool — not affiliated with or endorsed by Roblox Corporation. It only launches
+Roblox's own local `StudioMCP` executable and edits local IDE config files; it opens no network
+listeners. Current release: **v1.2.1** ([CHANGELOG.md](CHANGELOG.md)).*
 
 ---
 
-## Project status
+## Quick start
 
-This is an **unofficial community tool**. It is not affiliated with, endorsed by, or supported by
-Roblox Corporation. "Roblox" and "Roblox Studio" are trademarks of Roblox Corporation. Use it at your
-own risk. The bridge only launches Roblox's own local `StudioMCP` executable and edits local IDE
-configuration files; it opens no network listeners.
+**1. Enable MCP in Roblox Studio**
+File → Beta Features → check **Model Context Protocol** → restart Studio and open any place.
 
-Current release: **v1.2.1**. See [CHANGELOG.md](CHANGELOG.md).
+**2. Run the installer**
+
+| OS | Do this |
+|---|---|
+| **Windows** | Double-click `install.bat` |
+| **macOS** | Double-click `install.command` |
+| **Any (manual)** | `python -m roblox_studio_mcp inject` |
+
+It detects Python, registers the package, writes the MCP config into every AI IDE it finds, removes
+conflicting legacy entries, and prints a diagnostic report.
+
+**3. Restart your AI IDE** (Claude Desktop, Cursor, Antigravity, OpenCode).
+
+That's it. To remove it later, run `uninstall.bat` / `uninstall.command`, or `python -m roblox_studio_mcp eject`.
+
+> **Keep the folder where it is.** The bridge runs in place from this folder — there is no PyPI
+> package. If you move or delete it, re-run the installer from the new location.
 
 ---
 
-## Why this bridge?
+## What it fixes
 
-Roblox Studio ships a native MCP server (`StudioMCP.exe` on Windows, `StudioMCP` on macOS). Pointing a
-modern AI IDE at it directly runs into several bugs:
+Pointing a modern AI IDE directly at Roblox's `StudioMCP` runs into several bugs:
 
 | Problem in the stock setup | Impact | How this bridge solves it |
 |---|---|---|
 | **`server/discover` handshake crash** | Some hosts send a `server/discover` probe before `initialize`; `StudioMCP` requires `initialize` first and drops the connection. | The bridge answers `server/discover` itself by proxying `tools/list`, so discovery never reaches the daemon out of order. |
 | **stderr pipe deadlock ("Working…" freeze)** | `StudioMCP` writes enough to its `stderr` pipe to fill the OS buffer; with nobody draining it, the daemon blocks and the host hangs forever. | Dedicated daemon threads continuously drain both `stdout` and `stderr`; `stderr` lines land in a bounded in-memory ring buffer. |
-| **Roblox auto-updates wipe configs** | Studio updates roughly weekly and rewrites its own launcher/config files. | The IDE config points at `python -m roblox_studio_mcp`, which the Roblox updater never touches. |
+| **Roblox auto-updates wipe configs** | Studio updates roughly weekly and rewrites its own launcher/config files. | The IDE config points at `python -m roblox_studio_mcp`, which the Roblox updater never touches. The bridge also auto-scrubs re-injected `mcp.bat` entries on every startup. |
 | **Stale `version-*` folder selection** | Naive lookups pick an old `version-<hash>` directory instead of the current build. | The resolver scans every known install root, prefers the folder that also contains the Studio Beta binary, and breaks ties by newest modification time. |
 | **Place / session disconnects** | Switching places or restarting Studio breaks the tool connection; calls then fail silently. | The session manager auto-discovers Studio instances via `list_roblox_studios`, injects the resolved `studio_id` into every tool call, and transparently re-resolves and retries when it detects a disconnect or stale id. |
 | **Requests that hang the host** | An internal failure used to leave the host waiting on a response id it would never receive. | Every failed request now returns a JSON-RPC `-32603` error so the host fails fast instead of hanging. |
+
+---
+
+## Requirements
+
+- **OS:** Windows 10/11 or macOS. (The injector has a Linux fallback for Cursor/OpenCode/Antigravity,
+  but the executable resolver only supports Windows and macOS install layouts.)
+- **Python:** 3.8 or newer, on `PATH` as `python`.
+- **Roblox Studio** with the **Model Context Protocol** beta feature enabled (see step 1 above).
 
 ---
 
@@ -81,50 +100,19 @@ The package is small and each module has one job:
 | [`core/bridge.py`](roblox_studio_mcp/core/bridge.py) | The stdio event loop. Reads host requests line by line, answers `initialize` / `ping` / `server/discover` / `resources/list` / `prompts/list` locally, forwards `tools/list` and `tools/call`, and guarantees a response (or `-32603`) for every request that has an id. Installs guarded signal handlers (`SIGINT`, `SIGTERM`, `SIGBREAK`). |
 | [`core/_log.py`](roblox_studio_mcp/core/_log.py) | Shared logger. Everything diagnostic goes to **stderr**; `stdout` is reserved for the JSON-RPC stream. Level comes from `ROBLOX_STUDIO_MCP_LOG_LEVEL` (default `WARNING`). |
 | [`injector/config_injector.py`](roblox_studio_mcp/injector/config_injector.py) | Detects installed IDEs and injects / ejects the `roblox_studio` MCP server entry, backing up any file it touches. |
-| [`cli.py`](roblox_studio_mcp/cli.py) | Argument parsing for the `run` / `doctor` / `inject` / `eject` subcommands. |
+| [`cli.py`](roblox_studio_mcp/cli.py) | Argument parsing for the `run` / `doctor` / `inject` / `scrub` / `eject` subcommands. |
 
 ---
 
-## Requirements
+## Installation details
 
-- **OS:** Windows 10/11 or macOS. (The injector has a Linux fallback for Cursor/OpenCode/Antigravity,
-  but the executable resolver only supports Windows and macOS install layouts.)
-- **Python:** 3.8 or newer, on `PATH` as `python`.
-- **Roblox Studio** with the **Model Context Protocol** beta feature enabled (see below).
+The bridge is **run in place from this folder** — there is no PyPI package and no build step. The
+installer runs `pip install -e .` (so the short `roblox-studio-mcp` command works too) and then
+`inject`, which writes an IDE config entry that points `python -m roblox_studio_mcp` at wherever this
+folder lives. **The folder must stay where it is after you run `inject`.** If you move or delete it,
+re-run `install.bat` / `install.command` (or `python -m roblox_studio_mcp inject`) from the new location.
 
-### Enable MCP in Roblox Studio
-
-1. Open **Roblox Studio**.
-2. Go to **File → Beta Features**.
-3. Enable **Model Context Protocol**.
-4. Restart Studio and open any place.
-
----
-
-## ⚡ 1-Click Quick Start (Click and Play)
-
-1. **Enable MCP in Roblox Studio**:
-   - Open Roblox Studio → **File** → **Beta Features** → check **Model Context Protocol** → Restart Studio and open any place.
-
-2. **Run the 1-Click Installer**:
-   - **Windows**: Double-click `install.bat` (or run `powershell -ExecutionPolicy Bypass -File install.ps1`)
-   - **macOS**: Double-click `install.command` (or run `./install.sh` in Terminal)
-   - **Manual / CLI**: `python -m roblox_studio_mcp inject`
-
-3. **Restart your AI IDE** (Claude Desktop, Cursor, Antigravity, OpenCode).
-
-That's it! The installer automatically detects Python, registers the package, writes the optimal MCP configuration to all your AI IDEs, and cleans up any conflicting scripts.
-
----
-
-## Installation Details
-
-The bridge is **run in place from the cloned repository** — there is no PyPI package and no build step.
-The injector writes an IDE config entry that points `python -m roblox_studio_mcp` at wherever you
-cloned the repo, so **the repo must stay where it is after you run `inject`**. If you move or delete
-it, re-run `install.bat` or `python -m roblox_studio_mcp inject` from the new location.
-
-### Config Entry Format
+### Config entry format
 
 `inject` writes a `roblox_studio` entry like this into each config file it finds:
 
@@ -169,7 +157,7 @@ Hosts that are not auto-injected (e.g. **Claude Code**, **Windsurf**) still work
 
 ## CLI commands
 
-Run any of these from the repo root (or anywhere, if you installed via `pip install -e .`):
+Run any of these from the repo root (or anywhere, after `pip install -e .`):
 
 ```bash
 # Run the stdio bridge server (auto-scrubs bad mcp.bat entries on every startup)
@@ -178,7 +166,7 @@ python -m roblox_studio_mcp run
 # Diagnostics: list StudioMCP candidates and verify all IDE configurations
 python -m roblox_studio_mcp doctor
 
-# 1-Click Inject: inject config into all detected AI IDEs (Claude Desktop, Cursor, Antigravity, OpenCode)
+# Inject config into all detected AI IDEs
 python -m roblox_studio_mcp inject --target all
 
 # Scrub: remove any conflicting Roblox mcp.bat entries without touching other servers
@@ -232,20 +220,14 @@ git clone https://github.com/Cpleasance/roblox-studio-mcp-bridge
 cd roblox-studio-mcp-bridge
 pip install -e ".[dev]"
 
-python -m pytest        # run the test suite (105 tests)
+python -m pytest        # run the test suite (118 tests)
 ruff check .            # lint
 ruff format .           # format
 ```
 
 The runtime code is **standard-library only** and must stay **Python 3.8 compatible**. See
-[CONTRIBUTING.md](CONTRIBUTING.md) for coding conventions and the PR process.
-
----
-
-## Contributing
-
-Bug reports and pull requests are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md) first.
-For security issues, see [SECURITY.md](SECURITY.md).
+[CONTRIBUTING.md](.github/CONTRIBUTING.md) for coding conventions and the PR process. For security
+issues, see [SECURITY.md](.github/SECURITY.md).
 
 ---
 
