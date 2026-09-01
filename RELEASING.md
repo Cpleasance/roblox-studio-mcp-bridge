@@ -12,7 +12,7 @@ is stored anywhere.
    manual upload is needed):
    - Go to <https://pypi.org/manage/account/publishing/>
    - Add a **pending publisher**:
-     - PyPI project name: `roblox-studio-mcp`
+     - PyPI project name: `roblox-studio-mcp-bridge`
      - Owner: `Cpleasance`
      - Repository: `roblox-studio-mcp-bridge`
      - Workflow: `release.yml`
@@ -36,8 +36,8 @@ completes.
    git tag vX.Y.Z
    git push && git push --tags
    ```
-4. Watch the **Release** workflow. On success: GitHub Release published, `roblox-studio-mcp X.Y.Z`
-   live on PyPI.
+4. Watch the **Release** workflow. On success: GitHub Release published,
+   `roblox-studio-mcp-bridge X.Y.Z` live on PyPI.
 
 ## Local build check
 

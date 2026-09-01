@@ -13,7 +13,7 @@ version-selection, and session-rebinding bugs that make the stock setup unreliab
 
 *Unofficial community tool — not affiliated with or endorsed by Roblox Corporation. It only launches
 Roblox's own local `StudioMCP` executable and edits local IDE config files; it opens no network
-listeners. Current release: **v1.3.0** ([CHANGELOG.md](CHANGELOG.md)).*
+listeners. Current release: **v1.3.1** ([CHANGELOG.md](CHANGELOG.md)).*
 
 ---
 
@@ -26,13 +26,14 @@ File → Beta Features → check **Model Context Protocol** → restart Studio a
 
 | How | Command | Notes |
 |---|---|---|
-| **uvx** (recommended) | `uvx roblox-studio-mcp inject` | No install step. Needs [uv](https://docs.astral.sh/uv/). |
-| **pip** | `pip install roblox-studio-mcp` then `roblox-studio-mcp inject` | Standard Python install. |
+| **uvx** (recommended) | `uvx roblox-studio-mcp-bridge inject` | No install step. Needs [uv](https://docs.astral.sh/uv/). |
+| **pip** | `pip install roblox-studio-mcp-bridge` then `roblox-studio-mcp inject` | Standard Python install. |
 | **Double-click** | `install.bat` (Windows) / `install.command` (macOS) | Runs a source checkout in place — clone first. |
 
-`inject` detects how it was installed, writes the right MCP-server entry into every AI IDE it finds,
-removes conflicting legacy entries, and prints a diagnostic report. Pick the entry style explicitly
-with `inject --mode uvx|pip|repo` if the auto-detection guesses wrong.
+The installed command is `roblox-studio-mcp` (short alias) or `roblox-studio-mcp-bridge`. `inject`
+detects how it was installed, writes the right MCP-server entry into every AI IDE it finds, removes
+conflicting legacy entries, and prints a diagnostic report. Pick the entry style explicitly with
+`inject --mode uvx|pip|repo` if the auto-detection guesses wrong.
 
 **3. Restart your AI IDE** (Claude Desktop, Cursor, Antigravity, OpenCode).
 
@@ -123,13 +124,14 @@ The package is small and each module has one job:
 
 ## Installation details
 
-The bridge ships on PyPI as [`roblox-studio-mcp`](https://pypi.org/project/roblox-studio-mcp/). `inject`
-detects how it is available and writes the matching config entry — force it with `--mode`:
+The bridge ships on PyPI as
+[`roblox-studio-mcp-bridge`](https://pypi.org/project/roblox-studio-mcp-bridge/). `inject` detects how
+it is available and writes the matching config entry — force it with `--mode`:
 
 | `--mode` | Config entry | Use when |
 |---|---|---|
-| `uvx` | `uvx roblox-studio-mcp run` | You have `uv`; nothing to install or keep. |
-| `pip` | `<python> -m roblox_studio_mcp run` | Installed with `pip install roblox-studio-mcp`. |
+| `uvx` | `uvx roblox-studio-mcp-bridge run` | You have `uv`; nothing to install or keep. |
+| `pip` | `<python> -m roblox_studio_mcp run` | Installed with `pip install roblox-studio-mcp-bridge`. |
 | `repo` | same, plus `cwd` + `PYTHONPATH` to the checkout | Running a `git clone` in place (what `install.bat` does). |
 | `auto` *(default)* | `repo` from a checkout, else `pip` | — |
 
@@ -138,8 +140,8 @@ detects how it is available and writes the matching config entry — force it wi
 ```jsonc
 // uvx / pip mode — no path dependency
 { "mcpServers": { "roblox_studio": {
-  "command": "uvx",                              // or the python interpreter, for pip mode
-  "args": ["roblox-studio-mcp", "run"],          // or ["-m", "roblox_studio_mcp", "run"]
+  "command": "uvx",                                // or the python interpreter, for pip mode
+  "args": ["roblox-studio-mcp-bridge", "run"],      // or ["-m", "roblox_studio_mcp", "run"]
   "env": { "PYTHONIOENCODING": "utf-8", "PYTHONUNBUFFERED": "1" }
 } } }
 
@@ -176,7 +178,7 @@ Hosts that are not auto-injected (e.g. **Claude Code**, **Windsurf**) still work
 ## CLI commands
 
 With the package installed, use the `roblox-studio-mcp` command (or `python -m roblox_studio_mcp`, or
-`uvx roblox-studio-mcp`) from anywhere:
+`uvx roblox-studio-mcp-bridge`) from anywhere:
 
 ```bash
 # Run the stdio bridge server (auto-scrubs bad mcp.bat entries on every startup)

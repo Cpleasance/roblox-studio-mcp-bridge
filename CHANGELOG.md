@@ -9,12 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _No unreleased changes yet._
 
+## [1.3.1] - 2026-09-01
+
+### Changed
+
+- **Renamed the PyPI distribution** to `roblox-studio-mcp-bridge` (matches the
+  repository; the old `roblox-studio-mcp` 1.3.0 is yanked). The import package
+  stays `roblox_studio_mcp` and the `roblox-studio-mcp` console command still
+  works as a short alias, so injected configs are unaffected. `inject --mode uvx`
+  now writes `uvx roblox-studio-mcp-bridge run`.
+
 ## [1.3.0] - 2026-09-01
 
 ### Added
 
-- **PyPI distribution** — the bridge is now installable as `pip install roblox-studio-mcp`
-  or `uvx roblox-studio-mcp`, in addition to the source-checkout flow.
+- **PyPI distribution** — the bridge is now installable from PyPI, in addition to
+  the source-checkout flow. (Published as `roblox-studio-mcp`; renamed to
+  `roblox-studio-mcp-bridge` in 1.3.1 and this version yanked.)
 - **`inject --mode auto|repo|pip|uvx`** — `inject` detects whether it is running
   from a source checkout or an installed package and writes the matching
   `mcpServers.roblox_studio` entry: `repo` keeps the `cwd` + `PYTHONPATH` binding

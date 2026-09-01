@@ -27,7 +27,7 @@ if [ -z "$PYTHON_EXE" ]; then
     exit 1
 fi
 
-echo "[1/3] Registering roblox-studio-mcp package..."
+echo "[1/3] Registering roblox-studio-mcp-bridge package..."
 "$PYTHON_EXE" -m pip install -e . --quiet 2>/dev/null || true
 
 echo "[2/3] Injecting MCP configuration into Claude Desktop, Cursor, OpenCode, Antigravity..."

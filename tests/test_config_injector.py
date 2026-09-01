@@ -134,7 +134,7 @@ class TestInject:
         MCPConfigInjector.inject(mode="uvx")
         entry = _read(single_target)["mcpServers"]["roblox_studio"]
         assert entry["command"] == "uvx"
-        assert entry["args"] == ["roblox-studio-mcp", "run"]
+        assert entry["args"] == ["roblox-studio-mcp-bridge", "run"]
         assert "cwd" not in entry
 
     def test_repo_mode_binds_to_checkout(self, single_target):
