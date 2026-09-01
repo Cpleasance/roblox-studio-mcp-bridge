@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "roblox-studio-mcp"
-version = "1.2.0"
+version = "1.2.1"
 description = "Universal, update-proof Model Context Protocol bridge for Roblox Studio on Windows and macOS."
 readme = "README.md"
 authors = [{ name = "Cory Pleasance" }]
