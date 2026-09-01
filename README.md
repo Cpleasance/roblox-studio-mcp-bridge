@@ -51,23 +51,23 @@ modern AI IDE at it directly runs into several bugs:
 
 ```mermaid
 flowchart TD
-    Host["AI IDE / Agent<br>(Claude Desktop, Cursor, Claude Code, Antigravity, OpenCode, Windsurf)"]
-    Host -- "JSON-RPC 2.0 over stdio" --> Loop
+    Host["AI IDE / Agent<br/>Claude Desktop / Cursor / Antigravity / Claude Code"]
+    Host -->|"JSON-RPC 2.0 (stdio)"| Loop
 
-    subgraph bridge ["Universal Roblox Studio MCP Bridge (roblox_studio_mcp)"]
-        Loop["stdio event loop<br>core/bridge.py"]
-        Decoupler["Request-ID decoupler<br>core/protocol.py"]
-        Resolver["Newest-build resolver<br>core/resolver.py"]
-        Session["Self-healing session manager<br>core/session.py"]
-        Proc["Subprocess + async pipe drainers<br>core/process.py"]
+    subgraph BridgeEngine["Universal Roblox Studio MCP Bridge"]
+        Loop["stdio event loop<br/>core/bridge.py"]
+        Decoupler["Request-ID decoupler<br/>core/protocol.py"]
+        Resolver["Newest-build resolver<br/>core/resolver.py"]
+        Session["Self-healing session manager<br/>core/session.py"]
+        Proc["Subprocess and async pipe drainers<br/>core/process.py"]
         Loop --> Decoupler
         Loop --> Resolver
         Loop --> Session
         Loop --> Proc
     end
 
-    Proc -- "local stdio pipes" --> StudioMCP["Roblox StudioMCP daemon<br>(StudioMCP.exe)"]
-    StudioMCP -- "local connection" --> Studio["Roblox Studio<br>(active place & DataModel)"]
+    Proc -->|"local stdio pipes"| StudioMCP["Roblox StudioMCP daemon<br/>StudioMCP.exe"]
+    StudioMCP -->|"local connection"| Studio["Roblox Studio<br/>active place and DataModel"]
 ```
 
 The package is small and each module has one job:
