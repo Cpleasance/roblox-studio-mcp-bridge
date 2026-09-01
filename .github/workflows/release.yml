@@ -54,24 +54,21 @@ jobs:
             dist/*.tar.gz
             dist/SHA256SUMS.txt
 
-  # ---------------------------------------------------------------------------
-  # Opt-in: publish to PyPI via OIDC Trusted Publishing (no API token needed).
-  # To enable:
-  #   1. Register this repo + workflow as a trusted publisher at
-  #      https://pypi.org/manage/project/roblox-studio-mcp/settings/publishing/
-  #   2. Uncomment the job below.
-  # ---------------------------------------------------------------------------
-  # pypi-publish:
-  #   needs: build
-  #   runs-on: ubuntu-latest
-  #   environment: pypi
-  #   permissions:
-  #     id-token: write  # OIDC token for Trusted Publishing
-  #   steps:
-  #     - uses: actions/download-artifact@v4
-  #       with:
-  #         name: dist
-  #         path: dist
-  #     - name: Remove non-distributable files
-  #       run: rm -f dist/SHA256SUMS.txt
-  #     - uses: pypa/gh-action-pypi-publish@release/v1
+  # Publishes to PyPI via OIDC Trusted Publishing (no API token stored).
+  # One-time setup before the first tag — see RELEASING.md. Until the trusted
+  # publisher is registered on PyPI this job fails harmlessly; the GitHub Release
+  # above still completes.
+  pypi-publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write  # OIDC token for Trusted Publishing
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+      - name: Remove non-distributable files
+        run: rm -f dist/SHA256SUMS.txt
+      - uses: pypa/gh-action-pypi-publish@release/v1
