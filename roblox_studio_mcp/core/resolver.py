@@ -58,25 +58,36 @@ class RobloxStudioResolver:
         exe_name = "StudioMCP.exe" if sys.platform == "win32" else "StudioMCP"
         companion_name = "RobloxStudioBeta.exe" if sys.platform == "win32" else "RobloxStudio"
 
+        home = Path.home()
+
+        # Check LOCALAPPDATA if available in environment (Windows standard, Wine / test harnesses on Linux/macOS)
+        local_appdata = os.getenv("LOCALAPPDATA")
+        if local_appdata:
+            search_roots.append(Path(local_appdata) / "Roblox" / "Versions")
+
         if sys.platform == "win32":
-            home = Path.home()
-            local_appdata = os.getenv("LOCALAPPDATA", str(home / "AppData" / "Local"))
             prog_files = os.getenv("ProgramFiles", r"C:\Program Files")
             prog_files_x86 = os.getenv("ProgramFiles(x86)", r"C:\Program Files (x86)")
 
             search_roots.extend(
                 [
-                    Path(local_appdata) / "Roblox" / "Versions",
                     Path(prog_files) / "Roblox" / "Versions",
                     Path(prog_files_x86) / "Roblox" / "Versions",
                 ]
             )
         elif sys.platform == "darwin":
-            home = Path.home()
             search_roots.extend(
                 [
                     Path("/Applications/RobloxStudio.app/Contents/MacOS"),
                     home / "Applications" / "RobloxStudio.app" / "Contents" / "MacOS",
+                    home / "Library" / "Roblox" / "Versions",
+                ]
+            )
+        else:
+            search_roots.extend(
+                [
+                    home / ".local" / "share" / "roblox" / "Versions",
+                    home / ".var" / "app" / "com.roblox.RobloxStudio" / "data" / "Roblox" / "Versions",
                     home / "Library" / "Roblox" / "Versions",
                 ]
             )

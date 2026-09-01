@@ -27,15 +27,24 @@ def isolated_env(monkeypatch, tmp_path):
     monkeypatch.delenv("STUDIO_MCP_PATH", raising=False)
 
     empty = tmp_path / "nonexistent"
-    versions = tmp_path / "LocalAppData" / "Roblox" / "Versions"
-    versions.mkdir(parents=True)
+    home = tmp_path / "home"
+    home.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr("pathlib.Path.home", classmethod(lambda cls: home))
 
-    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "LocalAppData"))
+    # Populate versions dir matching platform and LOCALAPPDATA fallback
+    if sys.platform == "darwin":
+        versions = home / "Library" / "Roblox" / "Versions"
+    elif sys.platform == "win32":
+        versions = tmp_path / "LocalAppData" / "Roblox" / "Versions"
+    else:  # linux
+        versions = home / ".local" / "share" / "roblox" / "Versions"
+
+    versions.mkdir(parents=True, exist_ok=True)
+
+    # Set env vars for complete cross-platform test isolation
+    monkeypatch.setenv("LOCALAPPDATA", str(versions.parent.parent))
     monkeypatch.setenv("ProgramFiles", str(empty / "pf"))
     monkeypatch.setenv("ProgramFiles(x86)", str(empty / "pfx86"))
-    # macOS / linux use Path.home(); redirect that too so the suite is hermetic.
-    monkeypatch.setattr("pathlib.Path.home", classmethod(lambda cls: tmp_path / "home"))
-    (tmp_path / "home").mkdir(exist_ok=True)
 
     return versions
 
