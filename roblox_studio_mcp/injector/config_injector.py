@@ -155,7 +155,7 @@ class MCPConfigInjector:
             raise ValueError(f"unknown inject mode {mode!r}; expected one of {_INJECT_MODES}")
 
         if mode == "uvx":
-            return {"command": "uvx", "args": ["roblox-studio-mcp", "run"], "env": dict(_COMMON_ENV)}
+            return {"command": "uvx", "args": ["roblox-studio-mcp-bridge", "run"], "env": dict(_COMMON_ENV)}
 
         py_exec = python_path or sys.executable
         if mode == "pip":
