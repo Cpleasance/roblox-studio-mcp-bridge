@@ -40,10 +40,25 @@ if "%PYTHON_EXE%"=="" (
 )
 
 echo [1/3] Registering roblox-studio-mcp-bridge package...
-%PYTHON_EXE% -m pip install -e . --no-warn-script-location --quiet >nul 2>nul
+%PYTHON_EXE% -m pip install -e . --no-warn-script-location --quiet
+if errorlevel 1 (
+    echo.
+    echo [WARN] 'pip install -e .' failed. Continuing anyway - 'inject' still works
+    echo        from this folder, but keep this folder where it is.
+    echo        Re-run this installer after fixing pip if the IDE can't see the server.
+    echo.
+)
 
 echo [2/3] Injecting MCP config into Claude Desktop, Cursor, OpenCode, Antigravity...
+echo        (also removes Roblox's broken 'Roblox_Studio' entry and repairs its mcp.bat)
 %PYTHON_EXE% -m roblox_studio_mcp inject
+if errorlevel 1 (
+    echo.
+    echo [ERROR] 'inject' failed. Nothing was written. See the message above.
+    echo.
+    pause
+    exit /b 1
+)
 
 echo.
 echo [3/3] Running system diagnostics...

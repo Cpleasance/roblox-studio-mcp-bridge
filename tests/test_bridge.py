@@ -21,6 +21,19 @@ from roblox_studio_mcp.core.protocol import (
 )
 
 
+@pytest.fixture(autouse=True)
+def mcp_bat_repair_calls(monkeypatch):
+    """Record (and neutralise) the bridge's mcp.bat self-heal so no test touches
+    the real ``%LOCALAPPDATA%\\Roblox\\mcp.bat``. Yields the call list."""
+    from roblox_studio_mcp.core import batfix
+
+    calls = []
+    monkeypatch.setattr(
+        batfix, "repair_roblox_launchers", lambda *a, **k: calls.append(True) or []
+    )
+    return calls
+
+
 def _line(obj):
     return json.dumps(obj)
 
@@ -438,3 +451,26 @@ class TestAutoScrub:
             responder=default_responder,
         )
         assert out == [{"jsonrpc": "2.0", "id": 99, "result": {}}]
+
+
+class TestAutoRepairLauncher:
+    """run() also repairs Roblox's broken mcp.bat launcher on startup."""
+
+    def test_repair_called_on_run(self, drive_bridge, mcp_bat_repair_calls):
+        drive_bridge(
+            [_line({"jsonrpc": "2.0", "id": 1, "method": "ping"})], responder=default_responder
+        )
+        assert mcp_bat_repair_calls, "repair_roblox_launchers() was not called during run()"
+
+    def test_repair_failure_does_not_crash_bridge(self, drive_bridge, monkeypatch):
+        from roblox_studio_mcp.core import batfix
+
+        monkeypatch.setattr(
+            batfix,
+            "repair_roblox_launchers",
+            lambda *a, **k: (_ for _ in ()).throw(RuntimeError("read-only fs")),
+        )
+        out, _, _ = drive_bridge(
+            [_line({"jsonrpc": "2.0", "id": 7, "method": "ping"})], responder=default_responder
+        )
+        assert out == [{"jsonrpc": "2.0", "id": 7, "result": {}}]

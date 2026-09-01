@@ -255,6 +255,24 @@ class TestInject:
         assert "roblox_studio" in data["mcpServers"]
         assert data["mcpServers"]["unrelated"] == {"command": "foo", "args": ["bar"]}
 
+    def test_removes_roblox_macos_direct_studiomcp_entry(self, single_target):
+        # Roblox's macOS entry has no mcp.bat - it points straight at the daemon,
+        # which still has the server/discover-before-initialize bug.
+        _write(
+            single_target,
+            {
+                "mcpServers": {
+                    "Roblox_Studio": {
+                        "command": "/Applications/RobloxStudio.app/Contents/MacOS/StudioMCP"
+                    }
+                }
+            },
+        )
+        MCPConfigInjector.inject()
+        data = _read(single_target)
+        assert "Roblox_Studio" not in data["mcpServers"]
+        assert "roblox_studio" in data["mcpServers"]
+
     def test_does_not_remove_our_own_entry_on_reinject(self, single_target):
         MCPConfigInjector.inject()
         MCPConfigInjector.inject()  # idempotent: must not treat our own entry as legacy
@@ -277,8 +295,27 @@ class TestLegacyMcpBatDetection:
     def test_matches_mcp_bat_case_insensitively(self):
         assert self._detect({"command": "CMD.EXE", "args": ["/c", "...\\MCP.BAT"]})
 
+    def test_matches_roblox_macos_direct_studiomcp_entry(self):
+        # Roblox's documented macOS entry: command points straight at the daemon.
+        assert self._detect(
+            {"command": "/Applications/RobloxStudio.app/Contents/MacOS/StudioMCP"}
+        )
+
+    def test_matches_windows_direct_studiomcp_exe_entry(self):
+        assert self._detect(
+            {"command": "C:\\Users\\x\\AppData\\Local\\Roblox\\Versions\\version-abc\\StudioMCP.exe"}
+        )
+
     def test_does_not_match_unrelated_entry(self):
         assert not self._detect({"command": "python", "args": ["-m", "roblox_studio_mcp", "run"]})
+
+    def test_does_not_match_our_uvx_entry(self):
+        assert not self._detect({"command": "uvx", "args": ["roblox-studio-mcp-bridge", "run"]})
+
+    def test_does_not_match_our_repo_entry_even_though_cwd_is_roblox_ish(self):
+        assert not self._detect(
+            {"command": "python", "args": ["-m", "roblox_studio_mcp", "run"], "cwd": "C:\\x\\roblox"}
+        )
 
     def test_does_not_match_non_dict(self):
         assert not self._detect("not a dict")

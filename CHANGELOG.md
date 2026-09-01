@@ -9,6 +9,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _No unreleased changes yet._
 
+## [1.4.0] - 2026-09-01
+
+### Added
+
+- **In-place repair of Roblox's broken `mcp.bat`** (`roblox_studio_mcp/core/batfix.py`).
+  Roblox Studio's `%LOCALAPPDATA%\Roblox\mcp.bat` puts the `)` closing its `if` and
+  the following `else` on separate lines — invalid batch that `cmd.exe` rejects with
+  `'else' is not recognized as an internal or external command` /
+  `'"%B/..\StudioMCP.exe"'` / `')'`, plus the `expect initialized request` handshake
+  drop. It only surfaces once the hard-coded `version-<hash>` path goes stale, i.e.
+  after any Studio update, so it hits users at random. `inject`, `scrub`, and bridge
+  startup now rewrite that file with a correct, version-independent launcher (newest
+  `StudioMCP.exe` under `…\Roblox\Versions`, registry `ContentFolder` as a fallback),
+  keeping the original as `mcp.bat.roblox-bak`. Idempotent; re-heals after every
+  Studio update. `eject` restores the original. `doctor` reports the launcher's state
+  (`absent` / `managed` / `broken` / `ok`).
+- `tests/test_batfix.py`, plus `mcp.bat`-repair coverage in `test_bridge.py` and
+  `test_cli.py`.
+
+### Changed
+
+- **Roblox-entry detection is no longer `mcp.bat`-string-only.** `scrub` / `inject`
+  now also strip Roblox's macOS-style `Roblox_Studio` entry (a bare `StudioMCP`
+  command with no `mcp.bat`) and any direct-`StudioMCP.exe` variant, while still
+  never touching the bridge's own entry. `_is_legacy_roblox_mcp_bat_entry` is kept
+  as an alias for `_is_roblox_native_entry`.
+- `doctor` / `inject` / `scrub` wording now distinguishes Roblox's broken
+  `Roblox_Studio` entry (harmless when the bridge's `roblox_studio` entry is also
+  present) from a hard failure.
+- `install.bat` no longer hides the `pip install` step's output and checks exit
+  codes; a failed `inject` now aborts with a message instead of printing success.
+- **Every CLI command now surfaces failures.** `main()` wraps the subcommand and
+  prints `❌ '<cmd>' failed: …` to stderr with exit code 1 (full traceback under
+  `ROBLOX_STUDIO_MCP_LOG_LEVEL=DEBUG`); `inject` / `scrub` / `eject` call the
+  `mcp.bat` repair in `strict=True` mode so a filesystem error (locked file,
+  read-only volume) reaches the user instead of being silently logged. The
+  bridge's *startup* self-heal stays non-fatal but now logs at `WARNING`, not
+  `DEBUG`, so it shows up on stderr.
+
 ## [1.3.5] - 2026-09-01
 
 ### Fixed

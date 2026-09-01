@@ -51,8 +51,9 @@ Pointing a modern AI IDE directly at Roblox's `StudioMCP` runs into several bugs
 | Problem in the stock setup | Impact | How this bridge solves it |
 |---|---|---|
 | **`server/discover` handshake crash** | Some hosts send a `server/discover` probe before `initialize`; `StudioMCP` requires `initialize` first and drops the connection. | The bridge answers `server/discover` itself by proxying `tools/list`, so discovery never reaches the daemon out of order. |
+| **Broken `mcp.bat` (`'else' is not recognized…`)** | Roblox's generated `%LOCALAPPDATA%\Roblox\mcp.bat` puts `)` and `else` on separate lines — invalid batch. It fails the moment the hard-coded `version-<hash>` path goes stale (i.e. after any Studio update). | `inject` / `scrub` / bridge startup rewrite `mcp.bat` with a correct, version-independent launcher (original kept as `mcp.bat.roblox-bak`), and strip Roblox's own `Roblox_Studio` entry. |
 | **stderr pipe deadlock ("Working…" freeze)** | `StudioMCP` writes enough to its `stderr` pipe to fill the OS buffer; with nobody draining it, the daemon blocks and the host hangs forever. | Dedicated daemon threads continuously drain both `stdout` and `stderr`; `stderr` lines land in a bounded in-memory ring buffer. |
-| **Roblox auto-updates wipe configs** | Studio updates roughly weekly and rewrites its own launcher/config files. | The IDE config points at `python -m roblox_studio_mcp`, which the Roblox updater never touches. The bridge also auto-scrubs re-injected `mcp.bat` entries on every startup. |
+| **Roblox auto-updates wipe configs** | Studio updates roughly weekly and rewrites its own launcher/config files. | The IDE config points at `python -m roblox_studio_mcp`, which the Roblox updater never touches. The bridge also auto-scrubs re-injected `Roblox_Studio` entries and re-repairs `mcp.bat` on every startup. |
 | **Stale `version-*` folder selection** | Naive lookups pick an old `version-<hash>` directory instead of the current build. | The resolver scans every known install root, prefers the folder that also contains the Studio Beta binary, and breaks ties by newest modification time. |
 | **Place / session disconnects** | Switching places or restarting Studio breaks the tool connection; calls then fail silently. | The session manager auto-discovers Studio instances via `list_roblox_studios`, injects the resolved `studio_id` into every tool call, and transparently re-resolves and retries when it detects a disconnect or stale id. |
 | **Requests that hang the host** | An internal failure used to leave the host waiting on a response id it would never receive. | Every failed request now returns a JSON-RPC `-32603` error so the host fails fast instead of hanging. |
@@ -65,7 +66,7 @@ Pointing a modern AI IDE directly at Roblox's `StudioMCP` runs into several bugs
 |---|---|---|---|
 | `server/discover` crash fixed | ❌ | ✅ | ✅ |
 | stderr pipe-deadlock fixed | ❌ | ✅ | ✅ |
-| Survives Roblox's weekly auto-update | ❌ (config overwritten) | ⚠️ re-run installer each update | ✅ auto-scrubs on every startup |
+| Survives Roblox's weekly auto-update | ❌ (config overwritten) | ⚠️ re-run installer each update | ✅ auto-scrubs + re-repairs `mcp.bat` on every startup |
 | Picks the newest Studio build | ❌ | ⚠️ first match | ✅ Beta-companion + newest mtime |
 | Self-healing session rebind on disconnect | ❌ | ❌ | ✅ re-resolves + retries |
 | Failed request can't hang the host | ❌ | ❌ | ✅ always returns `-32603` |
@@ -157,7 +158,9 @@ it is available and writes the matching config entry — force it with `--mode`:
 
 - Existing servers in the file are preserved. The original file is copied to `*.backup.json` before
   every write; an unparseable file is copied to `*.corrupt.bak` and repaired.
-- Any conflicting legacy Roblox `mcp.bat` entries are automatically purged.
+- Roblox's own `Roblox_Studio` entry (its `mcp.bat` launcher, or the direct-`StudioMCP`
+  form it writes on macOS) is automatically purged, and its broken `mcp.bat` is rewritten
+  in place with a working launcher (original saved as `mcp.bat.roblox-bak`).
 
 ### Auto-inject targets
 
@@ -181,7 +184,7 @@ With the package installed, use the `roblox-studio-mcp` command (or `python -m r
 `uvx roblox-studio-mcp-bridge`) from anywhere:
 
 ```bash
-# Run the stdio bridge server (auto-scrubs bad mcp.bat entries on every startup)
+# Run the stdio bridge server (auto-scrubs Roblox's entry + repairs mcp.bat on startup)
 python -m roblox_studio_mcp run
 
 # Diagnostics: list StudioMCP candidates and verify all IDE configurations
@@ -190,7 +193,7 @@ python -m roblox_studio_mcp doctor
 # Inject config into all detected AI IDEs
 python -m roblox_studio_mcp inject --target all
 
-# Scrub: remove any conflicting Roblox mcp.bat entries without touching other servers
+# Scrub: remove Roblox's own broken entry + repair its mcp.bat (leaves other servers alone)
 python -m roblox_studio_mcp scrub --target all
 
 # Eject: remove the roblox_studio entry from all IDEs
@@ -225,6 +228,7 @@ python -m roblox_studio_mcp doctor
 | Symptom | Likely cause / fix |
 |---|---|
 | `doctor` prints "No StudioMCP.exe found" | Roblox Studio is not installed, or the **Model Context Protocol** beta feature is off. Enable it, restart Studio, re-run `doctor`. As a last resort set `ROBLOX_STUDIO_MCP_PATH` to the executable. |
+| IDE shows a red **MCP Error** on `Roblox_Studio` — `'else' is not recognized as an internal or external command` / `'"%B/..\StudioMCP.exe"'` / `expect initialized request` | That is Roblox's own broken `mcp.bat`, not this bridge. Run `roblox-studio-mcp inject` (or `scrub`) once and restart the IDE — the bridge removes the `Roblox_Studio` entry and rewrites `mcp.bat`. Its own `roblox_studio` entry is what you use. |
 | Bridge exits immediately with a `[roblox-studio-mcp]` message on stderr | Same as above — `StudioMCP` could not be located. The message includes the remediation steps. |
 | Tools appear in the IDE but every call returns "Roblox Studio is not connected" | Open a place in Studio and make sure the MCP beta feature is enabled. The session manager retries a few times, then returns this error. |
 | IDE does not see the server at all | Confirm `inject` reported the right config file, then fully restart the IDE. Run `doctor` to see which config paths exist. |
