@@ -6,11 +6,15 @@ via a monkeypatched resolver, feeds the given JSON-RPC lines through one full
 ``run()`` loop and returns the parsed output objects.
 """
 
+import io
 import json
+import sys
+from pathlib import Path
 
 import pytest
 
 from roblox_studio_mcp.core.protocol import (
+    INTERNAL_ERROR,
     INVALID_REQUEST,
     METHOD_NOT_FOUND,
     PARSE_ERROR,
@@ -225,6 +229,118 @@ class TestErrorHandling:
             ),
         )
         assert out[0]["error"] == {"code": -32050, "message": "boom"}
+
+
+class TestServeForeverHandlerException:
+    """A handler that raises mid-request must not desync the stream: a request
+    with an id still gets a -32603, an id-less notification stays silent."""
+
+    @staticmethod
+    def _responder_ok_init_then_boom(p):
+        if p.get("method") == "initialize":
+            return {"result": {"protocolVersion": "2024-11-05", "serverInfo": {"name": "StudioMCP"}}}
+        raise RuntimeError("handler exploded")
+
+    def test_request_with_id_still_gets_internal_error(self, drive_bridge):
+        out, _, _ = drive_bridge(
+            [_line({"jsonrpc": "2.0", "id": 5, "method": "tools/list"})],
+            responder=self._responder_ok_init_then_boom,
+        )
+        assert len(out) == 1
+        assert out[0]["id"] == 5
+        assert out[0]["error"]["code"] == INTERNAL_ERROR
+        assert "handler exploded" in out[0]["error"]["message"]
+
+    def test_idless_notification_failure_is_swallowed(self, drive_bridge):
+        # tools/list with no id routes to the same handler; when it raises there
+        # is no id to answer, so nothing must be written.
+        out, _, _ = drive_bridge(
+            [_line({"jsonrpc": "2.0", "method": "tools/list"})],
+            responder=self._responder_ok_init_then_boom,
+        )
+        assert out == []
+
+    def test_stream_stays_in_sync_after_a_failed_request(self, drive_bridge):
+        def responder(p):
+            if p.get("method") == "initialize":
+                return {"result": {"protocolVersion": "2024-11-05"}}
+            if p.get("method") == "tools/list":
+                raise RuntimeError("boom")
+            return None
+
+        out, _, _ = drive_bridge(
+            [
+                _line({"jsonrpc": "2.0", "id": 1, "method": "tools/list"}),
+                _line({"jsonrpc": "2.0", "id": 2, "method": "ping"}),
+            ],
+            responder=responder,
+        )
+        assert [m["id"] for m in out] == [1, 2]
+        assert out[0]["error"]["code"] == INTERNAL_ERROR
+        assert out[1]["result"] == {}
+
+
+class TestBootstrapFailureExit:
+    """``run()`` must turn a failed StudioMCP bootstrap into a clean stderr
+    message + ``exit(1)`` rather than a traceback."""
+
+    @staticmethod
+    def _prep(monkeypatch):
+        monkeypatch.setattr(sys, "stdin", io.StringIO(""))
+        out, err = io.StringIO(), io.StringIO()
+        monkeypatch.setattr(sys, "stdout", out)
+        monkeypatch.setattr(sys, "stderr", err)
+        return err
+
+    def test_missing_executable_prints_beta_hint_and_exits_1(self, monkeypatch):
+        from roblox_studio_mcp.core import bridge as bridge_mod
+
+        monkeypatch.setattr(
+            bridge_mod.MCPConfigInjector, "scrub", staticmethod(lambda: [])
+        )
+        monkeypatch.setattr(
+            bridge_mod.RobloxStudioResolver,
+            "resolve_executable",
+            classmethod(lambda cls: (_ for _ in ()).throw(FileNotFoundError("Could not locate StudioMCP binary"))),
+        )
+        err = self._prep(monkeypatch)
+
+        b = bridge_mod.RobloxMCPBridge()
+        with pytest.raises(SystemExit) as exc:
+            b.run()
+
+        assert exc.value.code == 1
+        text = err.getvalue()
+        assert "Could not locate StudioMCP binary" in text
+        assert "Beta Features" in text
+        assert "ROBLOX_STUDIO_MCP_PATH" in text
+
+    def test_generic_startup_failure_prints_reason_and_exits_1(self, monkeypatch):
+        from roblox_studio_mcp.core import bridge as bridge_mod
+
+        monkeypatch.setattr(
+            bridge_mod.MCPConfigInjector, "scrub", staticmethod(lambda: [])
+        )
+        monkeypatch.setattr(
+            bridge_mod.RobloxStudioResolver,
+            "resolve_executable",
+            classmethod(lambda cls: Path("fake") / "StudioMCP.exe"),
+        )
+
+        def _boom_ctor(*_a, **_kw):
+            raise RuntimeError("spawn failed: EACCES")
+
+        monkeypatch.setattr(bridge_mod, "StudioMCPProcess", _boom_ctor)
+        err = self._prep(monkeypatch)
+
+        b = bridge_mod.RobloxMCPBridge()
+        with pytest.raises(SystemExit) as exc:
+            b.run()
+
+        assert exc.value.code == 1
+        text = err.getvalue()
+        assert "Failed to start" in text
+        assert "spawn failed: EACCES" in text
 
 
 class TestStudioNotificationRelay:
