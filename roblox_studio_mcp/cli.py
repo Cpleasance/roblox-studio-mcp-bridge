@@ -2,6 +2,7 @@
 
 import argparse
 import datetime
+import sys
 
 from roblox_studio_mcp import __version__
 from roblox_studio_mcp.core.bridge import RobloxMCPBridge
@@ -106,7 +107,22 @@ def cmd_eject(args):
         print("⚠️ No matching configurations found to remove.")
 
 
+def _force_utf8_stdio() -> None:
+    """Emit UTF-8 regardless of the console code page.
+
+    Windows pipes/redirected output default to cp1252, which cannot encode the
+    emoji in the CLI banners. Applied here so every entry point (console script,
+    ``python -m``, direct import) is covered, not just ``__main__``.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):  # not a reconfigurable TextIO
+            pass
+
+
 def main():
+    _force_utf8_stdio()
     parser = argparse.ArgumentParser(
         prog="roblox-studio-mcp",
         description="Universal Roblox Studio MCP Bridge CLI",
