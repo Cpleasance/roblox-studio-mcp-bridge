@@ -1,4 +1,4 @@
-# Universal Roblox Studio MCP Bridge
+# BloxBridge MCP 🧱 — Reliable Roblox Studio Bridge for Claude Code & Cursor
 
 [![CI](https://github.com/Cpleasance/roblox-studio-mcp-bridge/actions/workflows/ci.yml/badge.svg)](https://github.com/Cpleasance/roblox-studio-mcp-bridge/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -6,10 +6,10 @@
 [![Python](https://img.shields.io/badge/Python-3.8+-yellow.svg)](https://www.python.org/)
 [![MCP](https://img.shields.io/badge/MCP-2024--11--05-green.svg)](https://modelcontextprotocol.io/)
 
-A pure-Python, standard-library-only [Model Context Protocol](https://modelcontextprotocol.io/) bridge
-that connects an AI IDE (Claude Desktop, Cursor, Claude Code, Antigravity, OpenCode, Windsurf) to
-Roblox Studio's native `StudioMCP` daemon. It fixes the handshake, pipe-buffer, auto-update,
-version-selection, and session-rebinding bugs that make the stock setup unreliable.
+**BloxBridge MCP** is a pure-Python, zero-dependency [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) bridge
+that reliably connects AI IDEs (Claude Code, Cursor, Claude Desktop, Antigravity, Windsurf) to
+Roblox Studio's native `StudioMCP` daemon. Built to eliminate dropped socket connections, handshake timeouts,
+pipe-buffer overflows, auto-update desyncs, and session-rebinding failures that plague stock bridges.
 
 *Unofficial community tool — not affiliated with or endorsed by Roblox Corporation. It only launches
 Roblox's own local `StudioMCP` executable and edits local IDE config files; it opens no network
