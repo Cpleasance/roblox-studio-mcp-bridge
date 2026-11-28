@@ -2,31 +2,137 @@ name: Release
 
 on:
   push:
+    branches:
+      - main
     tags:
       - "v*"
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.versioning.outputs.version }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Build sdist + wheel
+
+      - name: Resolve version and auto-bump if published
+        id: versioning
         run: |
           python -m pip install --upgrade pip
+          python -m pip install packaging
+          python - << 'EOF'
+          import json, os, re, sys, urllib.request
+          from packaging.version import Version
+
+          with open("pyproject.toml", "r") as f:
+              content = f.read()
+
+          name_match = re.search(r'name\s*=\s*"([^"]+)"', content)
+          ver_match = re.search(r'version\s*=\s*"([^"]+)"', content)
+          if not name_match or not ver_match:
+              sys.exit("Error: Could not parse package name or version in pyproject.toml")
+
+          pkg_name = name_match.group(1)
+          local_ver_str = ver_match.group(1)
+          local_ver = Version(local_ver_str)
+
+          ref = os.environ.get("GITHUB_REF", "")
+          is_tag = ref.startswith("refs/tags/v")
+
+          pypi_ver_str = None
+          try:
+              req = urllib.request.Request(
+                  f"https://pypi.org/pypi/{pkg_name}/json",
+                  headers={"User-Agent": "GitHubActions-AutoRelease"}
+              )
+              with urllib.request.urlopen(req, timeout=10) as resp:
+                  pypi_ver_str = json.load(resp)["info"]["version"]
+          except Exception as e:
+              print(f"PyPI check notice: {e}")
+
+          new_ver = local_ver_str
+          bumped = False
+
+          if not is_tag and pypi_ver_str:
+              pypi_ver = Version(pypi_ver_str)
+              if local_ver <= pypi_ver:
+                  parts = list(pypi_ver.release)
+                  while len(parts) < 3:
+                      parts.append(0)
+                  parts[2] += 1
+                  new_ver = f"{parts[0]}.{parts[1]}.{parts[2]}"
+
+                  content = re.sub(r'version\s*=\s*"[^"]+"', f'version = "{new_ver}"', content, count=1)
+                  with open("pyproject.toml", "w") as f:
+                      f.write(content)
+
+                  for init_candidate in [
+                      os.path.join(pkg_name.replace("-", "_"), "__init__.py"),
+                      os.path.join(pkg_name, "__init__.py"),
+                      os.path.join("src", pkg_name.replace("-", "_"), "__init__.py"),
+                  ]:
+                      if os.path.exists(init_candidate):
+                          with open(init_candidate, "r") as f:
+                              init_code = f.read()
+                          init_code = re.sub(
+                              r'__version__\s*=\s*"[^"]+"',
+                              f'__version__ = "{new_ver}"',
+                              init_code,
+                              count=1
+                          )
+                          with open(init_candidate, "w") as f:
+                              f.write(init_code)
+                          print(f"Updated {init_candidate} __version__ -> {new_ver}")
+
+                  bumped = True
+                  print(f"Auto-bumped version: {local_ver_str} -> {new_ver} (PyPI was {pypi_ver_str})")
+              else:
+                  print(f"Local version {local_ver_str} is ahead of PyPI ({pypi_ver_str}); keeping.")
+          else:
+              print(f"Releasing version: {new_ver} (tag={is_tag})")
+
+          github_output = os.environ.get("GITHUB_OUTPUT")
+          if github_output:
+              with open(github_output, "a") as f:
+                  f.write(f"version={new_ver}\n")
+                  f.write(f"bumped={'true' if bumped else 'false'}\n")
+          EOF
+
+      - name: Push auto-bump commit and tag
+        run: |
+          NEW_VER="${{ steps.versioning.outputs.version }}"
+          BUMPED="${{ steps.versioning.outputs.bumped }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if [ "$BUMPED" = "true" ]; then
+            git commit -am "chore: auto-bump version to $NEW_VER [skip ci]" || true
+            git push origin main || true
+          fi
+          git tag "v$NEW_VER" 2>/dev/null || true
+          git push origin "v$NEW_VER" 2>/dev/null || true
+
+      - name: Build sdist + wheel
+        run: |
           python -m pip install build twine
           python -m build
           python -m twine check dist/*
+
       - name: Generate SHA-256 checksums
         run: |
           cd dist
           sha256sum * > SHA256SUMS.txt
           cat SHA256SUMS.txt
+
       - uses: actions/upload-artifact@v4
         with:
           name: dist
@@ -36,7 +142,6 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     permissions:
-      # Required to create the GitHub Release and upload assets.
       contents: write
     steps:
       - uses: actions/download-artifact@v4
@@ -46,6 +151,7 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: "v${{ needs.build.outputs.version }}"
           draft: false
           generate_release_notes: true
           fail_on_unmatched_files: true
@@ -54,16 +160,12 @@ jobs:
             dist/*.tar.gz
             dist/SHA256SUMS.txt
 
-  # Publishes to PyPI via OIDC Trusted Publishing (no API token stored).
-  # One-time setup before the first tag — see RELEASING.md. Until the trusted
-  # publisher is registered on PyPI this job fails harmlessly; the GitHub Release
-  # above still completes.
   pypi-publish:
     needs: build
     runs-on: ubuntu-latest
     environment: pypi
     permissions:
-      id-token: write  # OIDC token for Trusted Publishing
+      id-token: write
     steps:
       - uses: actions/download-artifact@v4
         with:
@@ -72,3 +174,5 @@ jobs:
       - name: Remove non-distributable files
         run: rm -f dist/SHA256SUMS.txt
       - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          skip-existing: true
